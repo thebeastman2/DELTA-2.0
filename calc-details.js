@@ -1,16 +1,12 @@
 /* Delta 2.0 — Calculation Details
  * Adds a "ƒx" button next to every computed metric (stat cards + table cells).
- * Clicking opens a modal showing the formula, a glossary of variables, and a
- * worked calculation using the numbers displayed on the page.
+ * Clicking opens a modal showing the formula, a glossary of variables, the
+ * actual input values (each labeled with its variable symbol), and a worked
+ * calculation in which every substituted number is annotated with its
+ * variable.
  *
  * This is an enhancement layer on top of the compiled app bundle — it never
  * touches app internals, only the rendered DOM.
- *
- * Robustness notes:
- *  - Metric + context are stored as data-attributes on each button, and clicks
- *    are handled by a single delegated listener, so buttons keep working even
- *    when React re-renders and recreates the DOM.
- *  - The modal element is re-attached on every open, so it works repeatedly.
  */
 (function () {
   "use strict";
@@ -41,7 +37,14 @@
     return (x * 100).toFixed(d) + "%";
   }
 
-  /* ---------------- metric registry ---------------- */
+  /* ---------------- metric registry ----------------
+   * Each metric defines:
+   *   formula  – the equation, shown at the top
+   *   vars     – glossary: [symbol, description]
+   *   inputs   – the on-page values that feed the equation:
+   *              { sym, val, desc }
+   *   worked   – step-by-step lines; every substituted number is
+   *              annotated with its variable symbol.             */
 
   var METRICS = {
     sharpe: {
@@ -53,6 +56,27 @@
         ["R<sub>f</sub>", "risk-free rate (e.g. T-bill yield)"],
         ["&sigma;<sub>p</sub>", "portfolio volatility (annualized)"],
       ],
+      inputs: function (ctx) {
+        var ins = [];
+        if (ctx.ret != null)
+          ins.push({
+            sym: "R<sub>p</sub>",
+            val: pct(ctx.ret, 2),
+            desc: "portfolio return (annualized) — read from the table",
+          });
+        if (ctx.vol != null)
+          ins.push({
+            sym: "&sigma;<sub>p</sub>",
+            val: pct(ctx.vol, 2),
+            desc: "portfolio volatility (annualized) — read from the table",
+          });
+        ins.push({
+          sym: "SR",
+          val: ctx.sr.toFixed(4),
+          desc: "Sharpe ratio — the computed result",
+        });
+        return ins;
+      },
       worked: function (ctx) {
         var lines = [];
         lines.push(
@@ -61,11 +85,11 @@
         if (ctx.ret != null && ctx.vol != null) {
           var rf = ctx.ret - ctx.sr * ctx.vol;
           lines.push(
-            "&nbsp;&nbsp;&nbsp;= (" +
+            "SR = (R<sub>p</sub> = " +
               pct(ctx.ret, 2) +
-              " &minus; R<sub>f</sub>) / " +
+              " &minus; R<sub>f</sub>) / (&sigma;<sub>p</sub> = " +
               pct(ctx.vol, 2) +
-              " = " +
+              ") = " +
               ctx.sr.toFixed(4)
           );
           lines.push(
@@ -79,7 +103,7 @@
               pct(rf, 2)
           );
           lines.push(
-            "(with R<sub>f</sub> = 0, SR = " +
+            "(with R<sub>f</sub> = 0: SR = " +
               pct(ctx.ret, 2) +
               " / " +
               pct(ctx.vol, 2) +
@@ -91,7 +115,7 @@
           lines.push(
             "Reported SR = <b>" +
               ctx.sr.toFixed(4) +
-              "</b> — the engine computes it from the portfolio's annualized return and volatility (not shown on this card)."
+              "</b> — the engine computes it from R<sub>p</sub> and &sigma;<sub>p</sub> (not shown on this card)."
           );
         }
         return lines;
@@ -106,12 +130,21 @@
         ["V<sub>start</sub>", "portfolio value at start of period"],
         ["R<sub>p</sub>", "annualized return of the portfolio"],
       ],
+      inputs: function (ctx) {
+        return [
+          {
+            sym: "R<sub>p</sub>",
+            val: ctx.raw,
+            desc: "portfolio return (annualized) — reported by the engine",
+          },
+        ];
+      },
       worked: function (ctx) {
         return [
           "R<sub>p</sub> = (V<sub>end</sub> &minus; V<sub>start</sub>) / V<sub>start</sub>",
-          "Reported R<sub>p</sub> = <b>" +
+          "With R<sub>p</sub> = <b>" +
             ctx.raw +
-            "</b>. The backtest engine compounds daily portfolio returns over the window and annualizes the result (geometric mean &times; 252 trading days).",
+            "</b>: the engine compounds daily portfolio returns over the window and annualizes the result (geometric mean &times; 252 trading days).",
         ];
       },
     },
@@ -124,6 +157,15 @@
         ["&radic;252", "annualization factor (252 trading days/year)"],
         ["&sigma;<sub>ann</sub>", "annualized volatility"],
       ],
+      inputs: function (ctx) {
+        return [
+          {
+            sym: "&sigma;<sub>ann</sub>",
+            val: ctx.raw,
+            desc: "annualized volatility — read from the table",
+          },
+        ];
+      },
       worked: function (ctx) {
         var daily = ctx.vol / Math.sqrt(252);
         return [
@@ -132,7 +174,7 @@
             pct(ctx.vol, 2) +
             " / 15.8745 &asymp; " +
             pct(daily, 2),
-          "Reported annualized volatility = <b>" +
+          "Reported annualized volatility (&sigma;<sub>ann</sub>) = <b>" +
             ctx.raw +
             "</b>.",
         ];
@@ -147,6 +189,15 @@
         ["V<sub>trough</sub>", "lowest portfolio value during the decline"],
         ["MDD", "largest peak-to-trough decline over the window"],
       ],
+      inputs: function (ctx) {
+        return [
+          {
+            sym: "MDD",
+            val: ctx.raw,
+            desc: "max drawdown — reported by the engine",
+          },
+        ];
+      },
       worked: function (ctx) {
         return [
           "MDD = max<sub>t</sub> [ (V<sub>peak</sub> &minus; V<sub>trough</sub>) / V<sub>peak</sub> ]",
@@ -165,6 +216,22 @@
         ["R<sub>f</sub>", "risk-free rate"],
         ["&sigma;<sub>d</sub>", "downside deviation — volatility of returns below the target"],
       ],
+      inputs: function (ctx) {
+        var ins = [
+          {
+            sym: "Sortino",
+            val: ctx.sortino.toFixed(4),
+            desc: "Sortino ratio — the computed result",
+          },
+        ];
+        if (ctx.ret != null)
+          ins.push({
+            sym: "R<sub>p</sub>",
+            val: pct(ctx.ret, 2),
+            desc: "portfolio return (annualized) — read from the table",
+          });
+        return ins;
+      },
       worked: function (ctx) {
         var lines = [
           "Sortino = (R<sub>p</sub> &minus; R<sub>f</sub>) / &sigma;<sub>d</sub>",
@@ -172,7 +239,7 @@
         if (ctx.ret != null) {
           var sd = (ctx.ret - 0) / ctx.sortino;
           lines.push(
-            "Solving for downside deviation (with R<sub>f</sub> = 0): &sigma;<sub>d</sub> = R<sub>p</sub> / Sortino = " +
+            "Solving for &sigma;<sub>d</sub> (with R<sub>f</sub> = 0): &sigma;<sub>d</sub> = R<sub>p</sub> / Sortino = " +
               pct(ctx.ret, 2) +
               " / " +
               ctx.sortino.toFixed(4) +
@@ -195,6 +262,15 @@
         ["CAGR", "compound annual growth rate of the portfolio"],
         ["MDD", "max drawdown (as a positive number)"],
       ],
+      inputs: function (ctx) {
+        return [
+          {
+            sym: "Calmar",
+            val: ctx.calmar.toFixed(4),
+            desc: "Calmar ratio — the computed result",
+          },
+        ];
+      },
       worked: function (ctx) {
         return [
           "Calmar = CAGR / MDD",
@@ -213,6 +289,15 @@
         ["&sigma;<sub>p</sub>", "portfolio volatility"],
         ["z<sub>&alpha;</sub>", "z-score of the confidence level (&alpha;=95% &rarr; 1.645)"],
       ],
+      inputs: function (ctx) {
+        return [
+          {
+            sym: "VaR<sub>95%</sub>",
+            val: ctx.raw,
+            desc: "value at risk — reported by the engine",
+          },
+        ];
+      },
       worked: function (ctx) {
         return [
           "VaR<sub>95%</sub> = &minus;( &mu;<sub>p</sub> + 1.645 &sigma;<sub>p</sub> )",
@@ -232,6 +317,15 @@
         ["&phi;(z)", "standard normal density at the quantile"],
         ["&alpha;", "confidence level (e.g. 0.95)"],
       ],
+      inputs: function (ctx) {
+        return [
+          {
+            sym: "CVaR<sub>95%</sub>",
+            val: ctx.raw,
+            desc: "conditional value at risk — reported by the engine",
+          },
+        ];
+      },
       worked: function (ctx) {
         return [
           "CVaR<sub>95%</sub> = &minus;( &mu;<sub>p</sub> &minus; &sigma;<sub>p</sub> &middot; &phi;(1.645) / 0.05 )",
@@ -250,6 +344,15 @@
         ["&beta;", "portfolio beta vs the benchmark"],
         ["R<sub>f</sub>", "risk-free rate"],
       ],
+      inputs: function (ctx) {
+        return [
+          {
+            sym: "&alpha;",
+            val: ctx.raw,
+            desc: "alpha — reported by the engine",
+          },
+        ];
+      },
       worked: function (ctx) {
         return [
           "&alpha; = R<sub>p</sub> &minus; [ R<sub>f</sub> + &beta;(R<sub>m</sub> &minus; R<sub>f</sub>) ]",
@@ -266,6 +369,15 @@
         ["Cov(R<sub>p</sub>, R<sub>m</sub>)", "covariance of portfolio and market returns"],
         ["Var(R<sub>m</sub>)", "variance of market returns"],
       ],
+      inputs: function (ctx) {
+        return [
+          {
+            sym: "&beta;",
+            val: ctx.raw,
+            desc: "beta — reported by the engine",
+          },
+        ];
+      },
       worked: function (ctx) {
         return [
           "&beta; = Cov(R<sub>p</sub>, R<sub>m</sub>) / Var(R<sub>m</sub>)",
@@ -280,6 +392,15 @@
         ["R<sub>p</sub> &minus; R<sub>b</sub>", "active return vs benchmark"],
         ["TE", "tracking error (volatility of active returns)"],
       ],
+      inputs: function (ctx) {
+        return [
+          {
+            sym: "IR",
+            val: ctx.raw,
+            desc: "information ratio — reported by the engine",
+          },
+        ];
+      },
       worked: function (ctx) {
         return [
           "IR = (R<sub>p</sub> &minus; R<sub>b</sub>) / TE",
@@ -294,6 +415,15 @@
         ["w<sub>i</sub>", "weight of asset i in the portfolio"],
         ["HHI", "concentration measure (1/N = fully diversified)"],
       ],
+      inputs: function (ctx) {
+        return [
+          {
+            sym: "HHI",
+            val: ctx.raw,
+            desc: "Herfindahl–Hirschman index — reported by the engine",
+          },
+        ];
+      },
       worked: function (ctx) {
         return [
           "HHI = &Sigma;<sub>i</sub> w<sub>i</sub><sup>2</sup>",
@@ -308,6 +438,15 @@
         ["w<sub>i</sub>", "weight of asset i"],
         ["N<sub>eff</sub>", "equivalent number of equally-weighted holdings"],
       ],
+      inputs: function (ctx) {
+        return [
+          {
+            sym: "N<sub>eff</sub>",
+            val: ctx.raw,
+            desc: "effective holdings — reported by the engine",
+          },
+        ];
+      },
       worked: function (ctx) {
         return [
           "N<sub>eff</sub> = 1 / &Sigma;<sub>i</sub> w<sub>i</sub><sup>2</sup>",
@@ -322,6 +461,15 @@
         ["w<sub>i,t</sub>", "weight of asset i at rebalance t"],
         ["w<sub>i,t&minus;1</sub>", "weight of asset i at the previous rebalance"],
       ],
+      inputs: function (ctx) {
+        return [
+          {
+            sym: "Turnover",
+            val: ctx.raw,
+            desc: "turnover — reported by the engine",
+          },
+        ];
+      },
       worked: function (ctx) {
         return [
           "Turnover = (1/2) &Sigma;<sub>i</sub> |w<sub>i,t</sub> &minus; w<sub>i,t&minus;1</sub>|",
@@ -380,6 +528,11 @@
       "#calc-modal .calc-var:last-child{border-bottom:none}" +
       "#calc-modal .calc-var b{font-family:'SFMono-Regular',Consolas,monospace;font-weight:600;color:#f8fafc;min-width:52px}" +
       "#calc-modal .calc-var span{color:#94a3b8}" +
+      "#calc-modal .calc-input{display:flex;align-items:baseline;gap:10px;padding:7px 0;border-bottom:1px dashed rgba(148,163,184,.12);font-size:13px}" +
+      "#calc-modal .calc-input:last-child{border-bottom:none}" +
+      "#calc-modal .calc-input b{font-family:'SFMono-Regular',Consolas,monospace;font-weight:600;color:#f8fafc;min-width:46px}" +
+      "#calc-modal .calc-input .calc-iv{font-family:'SFMono-Regular',Consolas,monospace;font-weight:600;color:#5eead4;min-width:72px}" +
+      "#calc-modal .calc-input span{color:#94a3b8}" +
       "#calc-modal .calc-steps{font-family:'SFMono-Regular',Consolas,monospace;font-size:13px;line-height:1.9;color:#cbd5e1;background:rgba(148,163,184,.05);border:1px solid rgba(148,163,184,.15);border-radius:10px;padding:14px 16px;overflow-x:auto;white-space:nowrap}" +
       "#calc-modal .calc-steps b{color:#f8fafc;font-weight:600}" +
       "#calc-modal .calc-foot{padding:10px 20px 14px;font-size:11px;color:#64748b;border-top:1px solid rgba(148,163,184,.12)}";
@@ -387,7 +540,7 @@
   }
 
   var modal = null;
-  function openModal(metric, workedLines, rawValue) {
+  function openModal(metric, ctx, rawValue) {
     ensureStyles();
     if (!modal) {
       modal = document.createElement("div");
@@ -397,6 +550,8 @@
       });
     }
     if (!modal.isConnected) document.body.appendChild(modal);
+
+    var workedLines = metric.worked(ctx);
     var vars = metric.vars
       .map(function (v) {
         return (
@@ -408,11 +563,28 @@
         );
       })
       .join("");
+    var inputs = metric.inputs ? metric.inputs(ctx) : [];
+    var inputsHtml = inputs.length
+      ? inputs
+          .map(function (i) {
+            return (
+              '<div class="calc-input"><b>' +
+              i.sym +
+              '</b><span class="calc-iv">= ' +
+              i.val +
+              "</span><span>" +
+              i.desc +
+              "</span></div>"
+            );
+          })
+          .join("")
+      : '<div class="calc-var"><span>No on-page inputs available for this metric.</span></div>';
     var steps = workedLines
       .map(function (l) {
         return "<div>" + l + "</div>";
       })
       .join("");
+
     modal.innerHTML =
       '<div id="calc-modal" role="dialog" aria-label="' +
       metric.name +
@@ -428,11 +600,14 @@
       '<div class="calc-section"><div class="calc-label">Variables</div>' +
       vars +
       "</div>" +
+      '<div class="calc-section"><div class="calc-label">Inputs (values used)</div>' +
+      inputsHtml +
+      "</div>" +
       '<div class="calc-section"><div class="calc-label">Worked calculation</div><div class="calc-steps">' +
       steps +
       "</div></div>" +
       "</div>" +
-      '<div class="calc-foot">Numbers above are read from the page &mdash; formulas are the standard definitions used by the DELTA engines.</div>' +
+      '<div class="calc-foot">Every number above is labeled with the variable it plugs into. Values are read from the page; formulas are the standard definitions used by the DELTA engines.</div>' +
       "</div>";
     var close = modal.querySelector(".calc-close");
     close.addEventListener("click", closeModal);
@@ -501,7 +676,7 @@
       var metric = METRICS[key];
       if (!metric) return;
       try {
-        openModal(metric, metric.worked(ctxFromAttrs(el)), el.getAttribute("data-raw"));
+        openModal(metric, ctxFromAttrs(el), el.getAttribute("data-raw"));
       } catch (err) {
         /* never break the host app */
       }
