@@ -217,40 +217,73 @@
         ["&sigma;<sub>d</sub>", "downside deviation — volatility of returns below the target"],
       ],
       inputs: function (ctx) {
-        var ins = [
-          {
-            sym: "Sortino",
-            val: ctx.sortino.toFixed(4),
-            desc: "Sortino ratio — the computed result",
-          },
-        ];
+        var ins = [];
         if (ctx.ret != null)
           ins.push({
             sym: "R<sub>p</sub>",
             val: pct(ctx.ret, 2),
             desc: "portfolio return (annualized) — read from the table",
           });
+        if (ctx.ret != null) {
+          var sd = ctx.ret / ctx.sortino;
+          ins.push({
+            sym: "&sigma;<sub>d</sub>",
+            val: pct(sd, 2),
+            desc: "downside deviation — implied from Rp / Sortino (engine computes it from the daily return series)",
+          });
+        }
+        ins.push({
+          sym: "R<sub>f</sub>",
+          val: "0%",
+          desc: "risk-free rate (assumed 0 for this view)",
+        });
+        ins.push({
+          sym: "Sortino",
+          val: ctx.sortino.toFixed(4),
+          desc: "Sortino ratio — the computed result",
+        });
         return ins;
       },
       worked: function (ctx) {
         var lines = [
           "Sortino = (R<sub>p</sub> &minus; R<sub>f</sub>) / &sigma;<sub>d</sub>",
         ];
+        lines.push(
+          "&sigma;<sub>d</sub> (downside deviation) is NOT total volatility — it only penalizes days the portfolio fell below the target (MAR = 0%):"
+        );
+        lines.push(
+          "&sigma;<sub>d,day</sub> = &radic;( (1/N) &Sigma; min(R<sub>t</sub> &minus; MAR, 0)<sup>2</sup> ) &nbsp;then annualized:&nbsp; &sigma;<sub>d</sub> = &sigma;<sub>d,day</sub> &times; &radic;252"
+        );
         if (ctx.ret != null) {
-          var sd = (ctx.ret - 0) / ctx.sortino;
+          var sd = ctx.ret / ctx.sortino;
+          var sdDay = sd / Math.sqrt(252);
           lines.push(
-            "Solving for &sigma;<sub>d</sub> (with R<sub>f</sub> = 0): &sigma;<sub>d</sub> = R<sub>p</sub> / Sortino = " +
+            "From the page's numbers: &sigma;<sub>d</sub> = R<sub>p</sub> / Sortino = " +
               pct(ctx.ret, 2) +
               " / " +
               ctx.sortino.toFixed(4) +
               " &asymp; " +
               pct(sd, 2)
           );
+          lines.push(
+            "Daily: &sigma;<sub>d,day</sub> = " +
+              pct(sd, 2) +
+              " / &radic;252 &asymp; " +
+              pct(sdDay, 2)
+          );
+          lines.push(
+            "Check: Sortino = (R<sub>p</sub> = " +
+              pct(ctx.ret, 2) +
+              " &minus; R<sub>f</sub> = 0%) / (&sigma;<sub>d</sub> = " +
+              pct(sd, 2) +
+              ") &asymp; " +
+              (ctx.ret / sd).toFixed(4)
+          );
         }
         lines.push(
-          "Reported Sortino = <b>" +
+          "The engine's Sortino = <b>" +
             ctx.sortino.toFixed(4) +
-            "</b> — like Sharpe but penalizes only downside moves."
+            "</b>. Unlike Sharpe, upside moves don't penalize it — only downside deviation counts."
         );
         return lines;
       },
