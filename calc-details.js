@@ -75,6 +75,14 @@
           val: ctx.sr.toFixed(4),
           desc: "Sharpe ratio — the computed result",
         });
+        if (ctx.ret != null && ctx.vol != null) {
+          var rf = ctx.ret - ctx.sr * ctx.vol;
+          ins.push({
+            sym: "R<sub>f</sub>",
+            val: pct(rf, 2),
+            desc: "implied risk-free rate — solved from the ratio",
+          });
+        }
         return ins;
       },
       worked: function (ctx) {
@@ -84,8 +92,15 @@
         );
         if (ctx.ret != null && ctx.vol != null) {
           var rf = ctx.ret - ctx.sr * ctx.vol;
+          lines.push("Where R<sub>p</sub> and &sigma;<sub>p</sub> come from:");
           lines.push(
-            "SR = (R<sub>p</sub> = " +
+            "R<sub>p</sub> = (1+r<sub>1</sub>)(1+r<sub>2</sub>)&hellip;(1+r<sub>N</sub>)<sup>252/N</sup> &minus; 1 &nbsp;(compounded daily returns, annualized)"
+          );
+          lines.push(
+            "&sigma;<sub>p</sub> = &sigma;<sub>daily</sub> &times; &radic;252 &nbsp;(daily std dev of returns, annualized)"
+          );
+          lines.push(
+            "Plug in: SR = (R<sub>p</sub> = " +
               pct(ctx.ret, 2) +
               " &minus; R<sub>f</sub>) / (&sigma;<sub>p</sub> = " +
               pct(ctx.vol, 2) +
@@ -164,13 +179,21 @@
             val: ctx.raw,
             desc: "annualized volatility — read from the table",
           },
+          {
+            sym: "&sigma;<sub>daily</sub>",
+            val: pct(ctx.vol / Math.sqrt(252), 2),
+            desc: "implied daily volatility = &sigma;<sub>ann</sub> / &radic;252",
+          },
         ];
       },
       worked: function (ctx) {
         var daily = ctx.vol / Math.sqrt(252);
         return [
           "&sigma;<sub>ann</sub> = &sigma;<sub>daily</sub> &times; &radic;252",
-          "&sigma;<sub>daily</sub> = &sigma;<sub>ann</sub> / &radic;252 = " +
+          "Step 1 — daily volatility of the return series:",
+          "&sigma;<sub>daily</sub> = &radic;( (1/(N&minus;1)) &Sigma; (R<sub>t</sub> &minus; R&#772;)<sup>2</sup> )",
+          "Step 2 — annualize (252 trading days): &sigma;<sub>ann</sub> = &sigma;<sub>daily</sub> &times; &radic;252",
+          "From the page: &sigma;<sub>daily</sub> = &sigma;<sub>ann</sub> / &radic;252 = " +
             pct(ctx.vol, 2) +
             " / 15.8745 &asymp; " +
             pct(daily, 2),
@@ -200,10 +223,12 @@
       },
       worked: function (ctx) {
         return [
-          "MDD = max<sub>t</sub> [ (V<sub>peak</sub> &minus; V<sub>trough</sub>) / V<sub>peak</sub> ]",
+          "DD<sub>t</sub> = (V<sub>t</sub> &minus; V<sub>peak,t</sub>) / V<sub>peak,t</sub>, where V<sub>peak,t</sub> = max(V<sub>0</sub>&hellip;V<sub>t</sub>) is the running peak",
+          "MDD = min over all days of DD<sub>t</sub> — the most negative peak-to-trough decline in the window",
+          "At every rebalance the engine tracks the running peak, computes the drawdown from it, and keeps the worst one.",
           "Reported MDD = <b>" +
             ctx.raw +
-            "</b> — the worst peak-to-trough decline the engine found across the full backtest window.",
+            "</b> — the worst peak-to-trough decline found across the full backtest window.",
         ];
       },
     },
@@ -296,21 +321,57 @@
         ["MDD", "max drawdown (as a positive number)"],
       ],
       inputs: function (ctx) {
-        return [
+        var ins = [
           {
             sym: "Calmar",
             val: ctx.calmar.toFixed(4),
             desc: "Calmar ratio — the computed result",
           },
         ];
+        if (ctx.mdd != null) {
+          ins.push({
+            sym: "MDD",
+            val: pct(Math.abs(ctx.mdd), 2),
+            desc: "max drawdown (absolute) — read from the table",
+          });
+          ins.push({
+            sym: "CAGR",
+            val: pct(ctx.calmar * Math.abs(ctx.mdd), 2),
+            desc: "implied compound annual growth rate = Calmar &times; |MDD|",
+          });
+        }
+        return ins;
       },
       worked: function (ctx) {
-        return [
-          "Calmar = CAGR / MDD",
-          "Reported Calmar = <b>" +
+        var lines = ["Calmar = CAGR / MDD"];
+        lines.push(
+          "CAGR = (V<sub>end</sub> / V<sub>start</sub>)<sup>1/years</sup> &minus; 1 &nbsp;(annualized growth rate)"
+        );
+        if (ctx.mdd != null) {
+          var cagr = ctx.calmar * Math.abs(ctx.mdd);
+          lines.push(
+            "From the page: CAGR = Calmar &times; |MDD| = " +
+              ctx.calmar.toFixed(4) +
+              " &times; " +
+              pct(Math.abs(ctx.mdd), 2) +
+              " &asymp; " +
+              pct(cagr, 2)
+          );
+          lines.push(
+            "Check: Calmar = CAGR / MDD = " +
+              pct(cagr, 2) +
+              " / " +
+              pct(Math.abs(ctx.mdd), 2) +
+              " &asymp; " +
+              (cagr / Math.abs(ctx.mdd)).toFixed(4)
+          );
+        }
+        lines.push(
+          "The engine's Calmar = <b>" +
             ctx.calmar.toFixed(4) +
-            "</b>. Higher is better — return per unit of worst-case loss.",
-        ];
+            "</b>. Higher is better — return per unit of worst-case loss."
+        );
+        return lines;
       },
     },
     var: {
@@ -691,6 +752,7 @@
         break;
       case "calmar":
         ctx.calmar = ctx.value;
+        ctx.mdd = numAttr(el, "data-mdd");
         break;
     }
     return ctx;
@@ -731,6 +793,7 @@
     if (ctx.vol != null) btn.setAttribute("data-vol", String(ctx.vol));
     if (ctx.sortino != null) btn.setAttribute("data-sortino", String(ctx.sortino));
     if (ctx.calmar != null) btn.setAttribute("data-calmar", String(ctx.calmar));
+    if (ctx.mdd != null) btn.setAttribute("data-mdd", String(ctx.mdd));
     return btn;
   }
 
@@ -857,6 +920,7 @@
         break;
       case "calmar":
         ctx.calmar = ctx.value;
+        ctx.mdd = rowCtx.drawdown != null ? rowCtx.drawdown : null;
         break;
     }
     return ctx;
