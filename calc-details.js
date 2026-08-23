@@ -5,6 +5,12 @@
  *
  * This is an enhancement layer on top of the compiled app bundle — it never
  * touches app internals, only the rendered DOM.
+ *
+ * Robustness notes:
+ *  - Metric + context are stored as data-attributes on each button, and clicks
+ *    are handled by a single delegated listener, so buttons keep working even
+ *    when React re-renders and recreates the DOM.
+ *  - The modal element is re-attached on every open, so it works repeatedly.
  */
 (function () {
   "use strict";
@@ -146,7 +152,7 @@
           "MDD = max<sub>t</sub> [ (V<sub>peak</sub> &minus; V<sub>trough</sub>) / V<sub>peak</sub> ]",
           "Reported MDD = <b>" +
             ctx.raw +
-            "</b> — the worst drawdown the engine found across the full backtest window.",
+            "</b> — the worst peak-to-trough decline the engine found across the full backtest window.",
         ];
       },
     },
@@ -326,10 +332,10 @@
   };
 
   var LABEL_MAP = {
-    sharpe: ["sharpe", "sharpe ratio", "last sharpe ratio"],
-    return: ["return", "portfolio return", "annual return", "cumulative return", "expected return", "total return"],
-    volatility: ["volatility", "annualized volatility", "portfolio volatility", "std dev", "standard deviation"],
-    drawdown: ["max drawdown", "maximum drawdown", "drawdown"],
+    sharpe: ["sharpe", "sharpe ratio", "last sharpe ratio", "annualized sharpe", "ann sharpe"],
+    return: ["return", "portfolio return", "annual return", "cumulative return", "expected return", "total return", "annualized return", "ann return"],
+    volatility: ["volatility", "annualized volatility", "portfolio volatility", "std dev", "standard deviation", "ann vol", "annual vol"],
+    drawdown: ["max drawdown", "maximum drawdown", "drawdown", "max dd", "mdd"],
     sortino: ["sortino", "sortino ratio"],
     calmar: ["calmar", "calmar ratio"],
     var: ["var", "value at risk", "var 95", "var95"],
@@ -338,7 +344,7 @@
     beta: ["beta"],
     information: ["information ratio", "info ratio"],
     hhi: ["hhi", "herfindahl", "herfindahl hirschman"],
-    effective: ["effective holdings", "effective n"],
+    effective: ["effective holdings", "effective n", "eff holdings", "n eff", "eff n"],
     turnover: ["turnover"],
   };
 
@@ -389,8 +395,8 @@
       modal.addEventListener("click", function (e) {
         if (e.target === modal) closeModal();
       });
-      document.body.appendChild(modal);
     }
+    if (!modal.isConnected) document.body.appendChild(modal);
     var vars = metric.vars
       .map(function (v) {
         return (
@@ -413,7 +419,7 @@
       ' calculation">' +
       '<div class="calc-head"><div class="calc-title">' +
       metric.name +
-      (rawValue ? ' &middot; ' + rawValue : "") +
+      (rawValue ? " &middot; " + rawValue : "") +
       '</div><button class="calc-close" aria-label="Close">&#10005;</button></div>' +
       '<div class="calc-body">' +
       '<div class="calc-section"><div class="calc-label">Formula</div><div class="calc-formula">' +
@@ -430,32 +436,93 @@
       "</div>";
     var close = modal.querySelector(".calc-close");
     close.addEventListener("click", closeModal);
-    var prevFocus = document.activeElement;
     close.focus();
-    document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape" && modal && modal.isConnected) {
-        closeModal();
-        if (prevFocus && prevFocus.focus) prevFocus.focus();
-      }
-    });
   }
 
   function closeModal() {
-    if (modal) modal.remove();
+    if (modal) {
+      modal.remove();
+      modal = null;
+    }
   }
 
-  function makeButton(metric, ctx, rawValue) {
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && modal && modal.isConnected) closeModal();
+  });
+
+  /* Click delegation: buttons carry their metric + context as data-attributes,
+   * and a single document-level listener handles every click — so even if
+   * React recreates a button between mousedown and mouseup, the click still
+   * resolves to the current element's attributes. */
+  function numAttr(el, name) {
+    var v = el.getAttribute(name);
+    return v === null || v === "" ? null : parseFloat(v);
+  }
+
+  function ctxFromAttrs(el) {
+    var key = el.getAttribute("data-metric");
+    var ctx = {
+      raw: el.getAttribute("data-raw") || "",
+      value: numAttr(el, "data-value"),
+    };
+    switch (key) {
+      case "sharpe":
+        ctx.sr = ctx.value;
+        ctx.ret = numAttr(el, "data-ret");
+        ctx.vol = numAttr(el, "data-vol");
+        break;
+      case "return":
+        ctx.ret = ctx.value;
+        break;
+      case "volatility":
+        ctx.vol = ctx.value;
+        break;
+      case "sortino":
+        ctx.sortino = ctx.value;
+        ctx.ret = numAttr(el, "data-ret");
+        break;
+      case "calmar":
+        ctx.calmar = ctx.value;
+        break;
+    }
+    return ctx;
+  }
+
+  document.addEventListener(
+    "click",
+    function (e) {
+      var el = e.target && e.target.closest
+        ? e.target.closest("[data-calc-btn]")
+        : null;
+      if (!el) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var key = el.getAttribute("data-metric");
+      var metric = METRICS[key];
+      if (!metric) return;
+      try {
+        openModal(metric, metric.worked(ctxFromAttrs(el)), el.getAttribute("data-raw"));
+      } catch (err) {
+        /* never break the host app */
+      }
+    },
+    true
+  );
+
+  function makeButton(metricKey, ctx, rawValue) {
     var btn = document.createElement("button");
     btn.className = "calc-btn";
     btn.type = "button";
     btn.title = "See the full calculation";
     btn.textContent = "ƒx";
     btn.setAttribute("data-calc-btn", "1");
-    btn.addEventListener("click", function (e) {
-      e.preventDefault();
-      e.stopPropagation();
-      openModal(metric, metric.worked(ctx), rawValue);
-    });
+    btn.setAttribute("data-metric", metricKey);
+    btn.setAttribute("data-raw", rawValue || "");
+    if (ctx.value != null) btn.setAttribute("data-value", String(ctx.value));
+    if (ctx.ret != null) btn.setAttribute("data-ret", String(ctx.ret));
+    if (ctx.vol != null) btn.setAttribute("data-vol", String(ctx.vol));
+    if (ctx.sortino != null) btn.setAttribute("data-sortino", String(ctx.sortino));
+    if (ctx.calmar != null) btn.setAttribute("data-calmar", String(ctx.calmar));
     return btn;
   }
 
@@ -463,6 +530,17 @@
 
   function metricForLabel(text) {
     return LABEL_TO_METRIC[norm(text)];
+  }
+
+  function findCard(p) {
+    var card = p.closest ? p.closest(".delta-card") : null;
+    if (card) return card;
+    var el = p.parentElement;
+    for (var i = 0; i < 4 && el; i++) {
+      if (el.querySelector && el.querySelector("span, b, div")) return el;
+      el = el.parentElement;
+    }
+    return null;
   }
 
   function scan() {
@@ -473,28 +551,26 @@
     var ps = document.querySelectorAll("p");
     for (var i = 0; i < ps.length; i++) {
       var p = ps[i];
-      if (p.closest("[data-calc-btn]")) continue;
       var key = metricForLabel(p.textContent);
       if (!key) continue;
-      // value lives in the card body, next to the label row
-      var card = p.closest(".delta-card");
-      if (!card) card = p.parentElement ? p.parentElement.parentElement : null;
+      var card = findCard(p);
       if (!card) continue;
       if (card.querySelector("[data-calc-btn]")) continue;
       var valueEl = null;
+      var num = null;
       var cands = card.querySelectorAll("span, div, p, b");
       for (var j = 0; j < cands.length; j++) {
         var c = cands[j];
-        var num = parseNum(c.textContent);
-        if (num && c.children.length === 0 && c.textContent.trim() === num.raw) {
+        var n = parseNum(c.textContent);
+        if (n && c.children.length === 0) {
           valueEl = c;
+          num = n;
           break;
         }
       }
-      if (!valueEl) continue;
-      // context: the metric value itself; for sharpe cards there is no R/σ
-      var ctx = buildCtx({}, key, valueEl, num);
-      var btn = makeButton(METRICS[key], ctx, num.raw);
+      if (!valueEl || !num) continue;
+      var ctx = buildCtx({}, key, num);
+      var btn = makeButton(key, ctx, num.raw);
       var row = valueEl.parentElement;
       if (row) row.appendChild(btn);
       else valueEl.parentNode.insertBefore(btn, valueEl.nextSibling);
@@ -525,7 +601,6 @@
             rowCtx[colMetrics[ci]] = cellNum.isPct
               ? cellNum.value / 100
               : cellNum.value;
-            rowCtx[colMetrics[ci] + "_raw"] = cellNum.raw;
           }
         }
         for (var k = 0; k < cells.length && k < colMetrics.length; k++) {
@@ -535,8 +610,8 @@
           if (cell.querySelector("[data-calc-btn]")) continue;
           var cellNum2 = parseNum(cell.textContent);
           if (!cellNum2) continue;
-          var ctx2 = buildCtx(rowCtx, key2, cell, cellNum2);
-          var btn2 = makeButton(METRICS[key2], ctx2, cellNum2.raw);
+          var ctx2 = buildCtx(rowCtx, key2, cellNum2);
+          var btn2 = makeButton(key2, ctx2, cellNum2.raw);
           var wrap = document.createElement("span");
           wrap.style.cssText =
             "display:inline-flex;align-items:center;justify-content:flex-end;gap:4px;";
@@ -551,29 +626,29 @@
     }
   }
 
-  function buildCtx(rowCtx, key, el, num) {
+  function buildCtx(rowCtx, key, num) {
     var ctx = {
       raw: num.raw,
       value: num.isPct ? num.value / 100 : num.value,
     };
     switch (key) {
       case "sharpe":
-        ctx.sr = num.isPct ? num.value / 100 : num.value;
+        ctx.sr = ctx.value;
         ctx.ret = rowCtx.return != null ? rowCtx.return : null;
         ctx.vol = rowCtx.volatility != null ? rowCtx.volatility : null;
         break;
       case "return":
-        ctx.ret = num.isPct ? num.value / 100 : num.value;
+        ctx.ret = ctx.value;
         break;
       case "volatility":
-        ctx.vol = num.isPct ? num.value / 100 : num.value;
+        ctx.vol = ctx.value;
         break;
       case "sortino":
-        ctx.sortino = num.isPct ? num.value / 100 : num.value;
+        ctx.sortino = ctx.value;
         ctx.ret = rowCtx.return != null ? rowCtx.return : null;
         break;
       case "calmar":
-        ctx.calmar = num.isPct ? num.value / 100 : num.value;
+        ctx.calmar = ctx.value;
         break;
     }
     return ctx;
@@ -592,7 +667,7 @@
       } catch (err) {
         /* never break the host app */
       }
-    }, 250);
+    }, 100);
   }
 
   if (document.body) {
