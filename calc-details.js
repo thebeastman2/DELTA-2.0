@@ -628,8 +628,7 @@
       "#calc-modal .calc-input .calc-iv{font-family:'SFMono-Regular',Consolas,monospace;font-weight:600;color:#5eead4;min-width:72px}" +
       "#calc-modal .calc-input span{color:#94a3b8}" +
       "#calc-modal .calc-steps{font-family:'SFMono-Regular',Consolas,monospace;font-size:13px;line-height:1.9;color:#cbd5e1;background:rgba(148,163,184,.05);border:1px solid rgba(148,163,184,.15);border-radius:10px;padding:14px 16px;overflow-x:auto;white-space:nowrap}" +
-      "#calc-modal .calc-steps b{color:#f8fafc;font-weight:600}" +
-      "#calc-modal .calc-foot{padding:10px 20px 14px;font-size:11px;color:#64748b;border-top:1px solid rgba(148,163,184,.12)}";
+      "#calc-modal .calc-steps b{color:#f8fafc;font-weight:600}";
     document.head.appendChild(styleEl);
   }
 
@@ -701,7 +700,6 @@
       steps +
       "</div></div>" +
       "</div>" +
-      '<div class="calc-foot">Every number above is labeled with the variable it plugs into. Values are read from the page; formulas are the standard definitions used by the DELTA engines.</div>' +
       "</div>";
     var close = modal.querySelector(".calc-close");
     close.addEventListener("click", closeModal);
