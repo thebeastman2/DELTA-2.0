@@ -43,12 +43,22 @@
     return '<div class="aa-card"><div class="aa-identity"><div class="aa-symbol">' + esc(ticker) + '</div><div><div class="aa-name">' + esc(a[0]) + '</div><div class="aa-meta">' + esc(a[1]) + ' · Equity / ETF · Benchmark: SPY</div></div></div><div class="aa-grid">' + periods.map(function (p) { var m = metrics(a, p.days); return '<div class="aa-card"><div class="aa-period">' + p.label + '</div>' + metric("Return", m.ret * 252 / p.days, true) + metric("Sharpe ratio", m.sharpe, false) + metric("Sortino ratio", m.sortino, false) + metric("Jensen’s alpha", m.alpha, true) + metric("Standard deviation", m.vol, true) + '</div>'; }).join("") + '</div><div class="aa-note">Methodology: returns are annualized from the selected window; standard deviation is annualized from daily observations; Sharpe uses a 4% risk-free rate; Sortino uses downside deviation with a 0% minimum acceptable return; Jensen’s alpha compares the asset with SPY using its beta. The mirrored bundle contains deterministic demo history rather than a live quote feed.</div></div>';
   }
   function metric(label, value, pct) { return '<div class="aa-metric"><span>' + label + '</span><b>' + (pct ? (value * 100).toFixed(2) + '%' : value.toFixed(2)) + '</b></div>'; }
-  function findMacro() { var all = document.querySelectorAll("a,button,[role=button]"); for (var i=0;i<all.length;i++) if (/macro/i.test(all[i].textContent || "")) return all[i]; return null; }
+  function findMacro() { var all = document.querySelectorAll("a,button,[role=button]"); for (var i=0;i<all.length;i++) if (/macro dashboard/i.test(all[i].textContent || "")) return all[i]; return null; }
+  function show() {
+    root = document.createElement("div");
+    var main = document.querySelector("main") || document.querySelector("[role=main]") || document.body;
+    main.innerHTML = ""; main.appendChild(root); render(active);
+  }
   function mount() {
     style(); var macro = findMacro(); if (!macro) return false;
     macro.textContent = "Asset Analysis"; macro.setAttribute("aria-label", "Asset Analysis");
-    if (macro.dataset.aaBound) return true; macro.dataset.aaBound = "1";
-    macro.addEventListener("click", function (e) { e.preventDefault(); e.stopImmediatePropagation(); root = document.createElement("div"); var main = document.querySelector("main") || document.querySelector("[role=main]") || document.body; main.innerHTML = ""; main.appendChild(root); render(active); });
+    if (!document.body.dataset.aaDelegated) {
+      document.body.dataset.aaDelegated = "1";
+      document.addEventListener("click", function (e) {
+        var el = e.target && e.target.closest ? e.target.closest("button,[role=button]") : null;
+        if (el && /asset analysis|macro dashboard/i.test(el.textContent || "")) { e.preventDefault(); e.stopImmediatePropagation(); show(); }
+      }, true);
+    }
     return true;
   }
   var tries = 0, timer = setInterval(function () { if (mount() || ++tries > 120) clearInterval(timer); }, 250);
