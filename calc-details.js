@@ -571,6 +571,88 @@
         ];
       },
     },
+    blposterior: {
+      name: "Black-Litterman Posterior",
+      formula:
+        "&mu;<sub>BL</sub> = [(&tau;&Sigma;)<sup>&minus;1</sup> + P<sup>T</sup>&Omega;<sup>&minus;1</sup>P]<sup>&minus;1</sup> [(&tau;&Sigma;)<sup>&minus;1</sup>&Pi; + P<sup>T</sup>&Omega;<sup>&minus;1</sup>q]",
+      vars: [
+        ["&Pi;", "equilibrium excess returns = &delta;&Sigma;w<sub>mkt</sub> (reverse-optimized from the market portfolio)"],
+        ["P, q", "view matrix and view returns — one row per view (+1 absolute; +1/&minus;1 relative)"],
+        ["&Omega;", "diagonal view-error variance; &Omega;<sub>ii</sub> = (P&tau;&Sigma;P<sup>T</sup>)<sub>ii</sub> &middot; (1/confidence &minus; 1)"],
+        ["&delta;", "implied risk aversion: &delta; = (w<sub>mkt</sub>&middot;&mu; &minus; r<sub>f</sub>) / (w<sub>mkt</sub>&Sigma;w<sub>mkt</sub>)"],
+        ["&tau;", "uncertainty of the equilibrium prior (default 0.05)"],
+        ["&Sigma;<sub>BL</sub>", "posterior covariance = &Sigma; + M<sup>&minus;1</sup> (Idzorek/Walters form)"],
+      ],
+      inputs: function (ctx) {
+        var ins = [];
+        if (ctx.delta != null)
+          ins.push({
+            sym: "&delta;",
+            val: Number(ctx.delta).toFixed(3),
+            desc: "implied risk aversion from the last optimization run",
+          });
+        if (ctx.tau != null)
+          ins.push({
+            sym: "&tau;",
+            val: Number(ctx.tau).toFixed(3),
+            desc: "prior uncertainty used in the last run",
+          });
+        (ctx.assets || []).forEach(function (a) {
+          ins.push({
+            sym: esc(a.t),
+            val: "&Pi; " + pct(a.pi, 2) + " &rarr; &mu;<sub>BL</sub> " + pct(a.mu, 2),
+            desc: "equilibrium vs posterior excess return (annualized)",
+          });
+        });
+        (ctx.omegas || []).forEach(function (w, i) {
+          ins.push({
+            sym: "&Omega;<sub>" + (i + 1) + "</sub>",
+            val: Number(w).toExponential(3),
+            desc: "view " + (i + 1) + " error variance — lower means the view is trusted more",
+          });
+        });
+        return ins;
+      },
+      worked: function (ctx) {
+        var L = [];
+        L.push(
+          "Step 1 &mdash; equilibrium returns: &Pi; = &delta;&Sigma;w<sub>mkt</sub>, &delta; implied by reverse optimization" +
+            (ctx.delta != null
+              ? " (&delta; = " + Number(ctx.delta).toFixed(3) + (ctx.tau != null ? ", &tau; = " + Number(ctx.tau).toFixed(3) : "") + " from the last run)"
+              : "") +
+              "."
+        );
+        L.push(
+          "Step 2 &mdash; views: P (one row per view) and q (predicted returns); each view gets &Omega;<sub>ii</sub> = (P&tau;&Sigma;P<sup>T</sup>)<sub>ii</sub> &middot; (1/confidence &minus; 1) — confidence 0.99 &rarr; &Omega; &rarr; 0 (trusted), 0.01 &rarr; &Omega; huge (ignored)."
+        );
+        if ((ctx.omegas || []).length) {
+          ctx.omegas.forEach(function (w, i) {
+            L.push("&Omega;<sub>" + (i + 1) + "</sub> = " + Number(w).toExponential(3));
+          });
+        } else {
+          L.push(
+            "No views active in the last run &rarr; &mu;<sub>BL</sub> = &Pi; and &Sigma;<sub>BL</sub> = &Sigma; + &tau;&Sigma;."
+          );
+        }
+        L.push(
+          "Step 3 &mdash; posterior mean: M = (&tau;&Sigma;)<sup>&minus;1</sup> + P<sup>T</sup>&Omega;<sup>&minus;1</sup>P; &mu;<sub>BL</sub> = M<sup>&minus;1</sup>[(&tau;&Sigma;)<sup>&minus;1</sup>&Pi; + P<sup>T</sup>&Omega;<sup>&minus;1</sup>q] (excess; the app adds r<sub>f</sub> for total return)."
+        );
+        L.push(
+          "Step 4 &mdash; posterior covariance: &Sigma;<sub>BL</sub> = &Sigma; + M<sup>&minus;1</sup>; the optimizer (max-Sharpe) runs on &mu;<sub>BL</sub> and &Sigma;<sub>BL</sub>."
+        );
+        (ctx.assets || []).forEach(function (a) {
+          var up = a.mu - a.pi;
+          L.push(
+            esc(a.t) +
+              ": &Pi; " + pct(a.pi, 2) + " &rarr; &mu;<sub>BL</sub> " + pct(a.mu, 2) +
+              " (&Delta; " + (up >= 0 ? "+" : "") + pct(up, 2) + ") &mdash; views " +
+              (Math.abs(up) < 5e-5 ? "left this asset at equilibrium" : up > 0 ? "raised" : "lowered") +
+              " its expected return."
+          );
+        });
+        return L;
+      },
+    },
   };
 
   var LABEL_MAP = {
@@ -752,6 +834,17 @@
         ctx.calmar = ctx.value;
         ctx.mdd = numAttr(el, "data-mdd");
         break;
+      case "blposterior":
+        try {
+          var bl = JSON.parse(el.getAttribute("data-bl") || "{}");
+          ctx.assets = bl.assets;
+          ctx.omegas = bl.omegas;
+          ctx.delta = bl.delta;
+          ctx.tau = bl.tau;
+        } catch (errB) {
+          /* ignore malformed payloads */
+        }
+        break;
     }
     return ctx;
   }
@@ -810,6 +903,69 @@
       el = el.parentElement;
     }
     return null;
+  }
+
+  function esc(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  /* Parse the BL diagnostics panel the app renders after an optimization run.
+   * Returns { assets:[{t,pi,mu,d}], omegas:[...], delta, tau } or null. */
+  function parseBLPanel(detailsEl) {
+    try {
+      var inner = detailsEl.querySelectorAll("details");
+      var assets = null;
+      var omegas = [];
+      for (var i = 0; i < inner.length; i++) {
+        var sum = inner[i].querySelector("summary");
+        var n = sum ? norm(sum.textContent) : "";
+        if (n.indexOf("equilibrium") !== -1 && n.indexOf("posterior") !== -1) {
+          var rows = inner[i].querySelectorAll("tbody tr");
+          var arr = [];
+          for (var r = 0; r < rows.length; r++) {
+            var td = rows[r].querySelectorAll("td");
+            if (td.length >= 4) {
+              var pi = parseNum(td[1].textContent);
+              var mu = parseNum(td[2].textContent);
+              if (pi && mu) {
+                var piV = pi.isPct ? pi.value / 100 : pi.value;
+                var muV = mu.isPct ? mu.value / 100 : mu.value;
+                var dl = parseNum(td[3].textContent);
+                var dV = dl ? (dl.isPct ? dl.value / 100 : dl.value) : muV - piV;
+                arr.push({ t: td[0].textContent.trim(), pi: piV, mu: muV, d: dV });
+              }
+            }
+          }
+          if (arr.length) assets = arr;
+        } else if (n.indexOf("per view") !== -1) {
+          var orows = inner[i].querySelectorAll("tbody tr");
+          for (var r2 = 0; r2 < orows.length; r2++) {
+            var td2 = orows[r2].querySelectorAll("td");
+            if (td2.length >= 2) {
+              var v = parseFloat(td2[1].textContent);
+              if (isFinite(v)) omegas.push(v);
+            }
+          }
+        }
+      }
+      if (!assets) return null;
+      var delta = null;
+      var tau = null;
+      var paras = detailsEl.querySelectorAll("p");
+      for (var p2 = 0; p2 < paras.length; p2++) {
+        var tx = paras[p2].textContent;
+        var m1 = tx.match(/\u03b4\s*=\s*([\d.]+)/);
+        var m2 = tx.match(/\u03c4\s*=\s*([\d.]+)/);
+        if (m1) delta = parseFloat(m1[1]);
+        if (m2) tau = parseFloat(m2[1]);
+      }
+      return { assets: assets, omegas: omegas, delta: delta, tau: tau };
+    } catch (err) {
+      return null;
+    }
   }
 
   function scan() {
@@ -892,6 +1048,32 @@
           cell.appendChild(wrap);
         }
       }
+    }
+
+    /* 3) Black-Litterman diagnostics panel: one fx button on the panel summary */
+    var summaries = document.querySelectorAll("summary");
+    for (var si = 0; si < summaries.length; si++) {
+      var sm = summaries[si];
+      if (norm(sm.textContent) !== "bl diagnostics last run") continue;
+      var panel = sm.closest ? sm.closest("details") : null;
+      if (!panel || panel.querySelector("[data-calc-btn]")) break;
+      var bl = parseBLPanel(panel);
+      if (!bl) break;
+      var bctx = {
+        raw: "",
+        value: null,
+        assets: bl.assets,
+        omegas: bl.omegas,
+        delta: bl.delta,
+        tau: bl.tau,
+      };
+      var bbtn = makeButton("blposterior", bctx, "");
+      bbtn.setAttribute(
+        "data-bl",
+        JSON.stringify({ assets: bl.assets, omegas: bl.omegas, delta: bl.delta, tau: bl.tau })
+      );
+      sm.appendChild(bbtn);
+      break;
     }
   }
 

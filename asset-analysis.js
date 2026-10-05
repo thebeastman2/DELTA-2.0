@@ -148,7 +148,10 @@
   }
 
   function navIsActive(nav) {
-    return !!(nav && /bg-white\/10/.test(String(nav.className)));
+    /* Match bg-white/10 as a standalone class token only — a bare /bg-white\/10/
+     * test also matches the ever-present "hover:bg-white/10" variant, which made
+     * the overlay show on every view and swallow all clicks outside the nav rail. */
+    return !!(nav && /(^|\s)bg-white\/10(\s|$)/.test(String(nav.className)));
   }
 
   function ensureOverlay() {
