@@ -120,6 +120,7 @@ var SCREENS = {
       '<p class="dg-sub">We sent a verification link to <b style="color:#5eead4">' + esc(pendingEmail) + '</b>. ' +
       'Open it on this device and this page continues automatically &mdash; then you pick your password.</p>' +
       '<div class="dg-ok">Keep this tab open while you check your email.</div>' +
+      '<div class="dg-foot" style="text-align:left;line-height:1.6">Sent from <b style="color:#94a3b8">noreply@delta-71243.firebaseapp.com</b> &mdash; not there? Check <b>Spam</b>, then resend.</div>' +
       '<button class="dg-ghost" data-act="resend" id="dg-resend">Resend link</button>' +
       '<button class="dg-link" data-act="start">Use a different email</button><div class="dg-err" id="dg-err"></div>';
   },
@@ -240,6 +241,7 @@ function act(a) {
       .then(function () {
         resendUntil = Date.now() + 45000;
         state = "signupSent"; busy = false; paint();
+        setTimeout(function () { if (state === "signupSent") paint(); }, 46000);
       })
       .catch(function (e) { showError(getErr(e)); });
     return;
