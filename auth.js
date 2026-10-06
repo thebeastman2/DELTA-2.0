@@ -120,7 +120,7 @@ var SCREENS = {
       '<p class="dg-sub">We sent a verification link to <b style="color:#5eead4">' + esc(pendingEmail) + '</b>. ' +
       'Open it on this device and this page continues automatically &mdash; then you pick your password.</p>' +
       '<div class="dg-ok">Keep this tab open while you check your email.</div>' +
-      '<div class="dg-foot" style="text-align:left;line-height:1.6">Sent from <b style="color:#94a3b8">noreply@delta-71243.firebaseapp.com</b> &mdash; not there? Check <b>Spam</b>, then resend.</div>' +
+      '<div class="dg-foot" style="text-align:left;line-height:1.6">Sent from <b style="color:#94a3b8">noreply@delta-71243.firebaseapp.com</b> &mdash; check <b>Spam</b>. Some providers (Outlook, university mail) block this sender &mdash; a Gmail address is most reliable.</div>' +
       '<button class="dg-ghost" data-act="resend" id="dg-resend">Resend link</button>' +
       '<button class="dg-link" data-act="start">Use a different email</button><div class="dg-err" id="dg-err"></div>';
   },
