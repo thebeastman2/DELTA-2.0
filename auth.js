@@ -218,8 +218,16 @@ function enterReady(isNew) {
 }
 
 function onRouteChange() {
-  if (location.pathname.indexOf("/auth") !== 0 && overlay) {
+  var onAuth = location.pathname.indexOf("/auth") === 0;
+  if (!onAuth && overlay) {
     overlay.remove(); overlay = null; card = null;
+  }
+  /* SPA navigation into /auth (e.g. clicking Launch workspace on the landing
+   * page) never reloads the page, so remount the wizard when we arrive. */
+  if (onAuth && !overlay && !firebaseHasUser) {
+    wizardActive = true;
+    if (state === "ready" || state === "readyNew") state = "start";
+    mount(); paint();
   }
 }
 
