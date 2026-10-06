@@ -33,7 +33,7 @@ var pendingEmail = null, resendUntil = 0;
 function $(sel, root) { return (root || document).querySelector(sel); }
 function esc(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; }
 
-function enforceGate() {
+function clearAppSession() {
   var ks = [], i, k;
   try {
     for (i = 0; i < localStorage.length; i++) ks.push(localStorage.key(i));
@@ -42,6 +42,10 @@ function enforceGate() {
       if (/^__convexAuth(JWT|RefreshToken)_/.test(k)) localStorage.removeItem(k);
     }
   } catch (e) {}
+}
+
+function enforceGate() {
+  clearAppSession();
   if (location.pathname.indexOf("/auth") !== 0) location.replace("/auth");
 }
 
@@ -321,7 +325,8 @@ function onRouteChange() {
   }
   /* SPA navigation into /auth (e.g. clicking Launch workspace on the landing
    * page) never reloads the page, so remount the wizard when we arrive. */
-  if (onAuth && !overlay && !firebaseHasUser) {
+  if (onAuth && !overlay) {
+    clearAppSession();
     wizardActive = true;
     if (state === "ready" || state === "readyNew") state = "start";
     mount(); paint();
@@ -437,7 +442,15 @@ function boot() {
     if (!user.emailVerified) return;
     if (state === "setPassword" || state === "ready" || state === "readyNew") return;
     if (wizardActive && (state === "signupSent" || state === "finishEmail")) return;
-    if (!bridged) { state = "ready"; pendingEmail = user.email; if (!overlay) mount(); paint(); bridgeToApp(); }
+    /* On /auth always WAIT for an explicit click - never auto-enter, even when
+     * a verified session already exists. Auto-enter only for direct /dashboard
+     * hits by returning users. */
+    if (location.pathname.indexOf("/auth") === 0) {
+      if (!overlay) { wizardActive = true; mount(); }
+      paint();
+      return;
+    }
+    if (!bridged) { state = "ready"; pendingEmail = user.email; paint(); bridgeToApp(); }
   });
 
   if (isSignInWithEmailLink(auth, location.href)) {
@@ -448,7 +461,12 @@ function boot() {
     return;
   }
 
-  if (location.pathname.indexOf("/auth") === 0) { wizardActive = true; mount(); paint(); }
+  if (location.pathname.indexOf("/auth") === 0) {
+    /* kill any lingering app session so the app router cannot bounce us into
+     * the workspace before the user makes a choice */
+    clearAppSession();
+    wizardActive = true; mount(); paint();
+  }
 
   document.addEventListener("click", function (ev) {
     var t = ev.target;
@@ -483,6 +501,15 @@ function boot() {
     try { guestNow = localStorage.getItem(GUEST_KEY) === "1"; } catch (e) {}
     onRouteChange();
     if (!firebaseHasUser && !guestNow && location.pathname.indexOf("/dashboard") === 0) { enforceGate(); return; }
+    /* returning guest: flag set but the app session was cleared (e.g. after a
+     * visit to /auth) - silently re-establish it so the workspace reopens */
+    if (!firebaseHasUser && guestNow && location.pathname.indexOf("/dashboard") === 0 && !bridged) {
+      var gb = null, ga = document.querySelectorAll("button"), gi;
+      for (gi = 0; gi < ga.length; gi++) {
+        if (GUEST_RE.test(ga[gi].textContent || "")) { gb = ga[gi]; break; }
+      }
+      if (gb) { bridged = true; gb.click(); }
+    }
     if (location.pathname.indexOf("/auth") === 0) return;
     var all = document.querySelectorAll("button"), i, b;
     for (i = 0; i < all.length; i++) {
