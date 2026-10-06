@@ -1,9 +1,9 @@
 /* DELTA auth gate — Firebase email verification -> password -> session bridge.
- * Visuals mirror the app's native auth screen: starfield, glowing DELTA mark,
- * single email row, OR divider, Continue as Guest.
+ * Visuals mirror the landing hero's design system exactly:
+ *   bg #060b13, accent #4a6cf7, delta-grid overlay, delta-glow-text wordmark,
+ *   Space Grotesk headings, Spectral serif subtitles, primary accent buttons.
  * Flow: email -> verification link -> set password (min 8) -> enter DELTA.
- * Returning users: "Sign in" link -> email + password (or reset).
- * Guest: bridges straight into the app's own guest session.
+ * Returning users: "Sign in with password". Guest: app's own guest session.
  */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
@@ -45,51 +45,82 @@ function enforceGate() {
   if (location.pathname.indexOf("/auth") !== 0) location.replace("/auth");
 }
 
+/* ---- design tokens lifted from the app CSS (index-CIBBl9-n.css) ----
+ * --background:#060b13  --surface:#0a1322  --surface-alt:#071020  --border:#16223a
+ * --text-primary:#f1f5f9 --text-secondary:#7c8ba3 --text-muted:#64748b
+ * --accent:#4a6cf7 --accent-light:#728cf9 --accent-200:#bccaff --accent-strong:#3350c9
+ * fonts: "Vanguard CF","Space Grotesk" headings; Spectral serif body copy
+ * effects: .delta-glow-text (0 0 18px accent / 0 0 44px accent),
+ *          .delta-grid (accent 5% 1px lines), primary = accent fill        */
 var CSS = [
   "#" + GATE_ID + "{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;",
-    "background:#05070b;color:#e2e8f0;font-family:'Space Grotesk',system-ui,-apple-system,sans-serif;overflow:hidden;}",
+    "background:#060b13;color:#f1f5f9;font-family:'Vanguard CF','Vanguard','Space Grotesk',ui-sans-serif,system-ui,sans-serif;overflow:hidden;}",
+  "#" + GATE_ID + " .dg-grid{position:absolute;inset:0;opacity:.6;pointer-events:none;",
+    "background-image:linear-gradient(to right,rgba(74,108,247,.05) 1px,transparent 1px),linear-gradient(to bottom,rgba(74,108,247,.05) 1px,transparent 1px);",
+    "background-size:44px 44px;}",
   "#" + GATE_ID + " .dg-stars{position:absolute;inset:0;width:100%;height:100%;}",
-  "#" + GATE_ID + " .dg-stage{position:relative;z-index:2;width:min(340px,90vw);display:flex;flex-direction:column;align-items:center;text-align:center;}",
-  "#" + GATE_ID + " .dg-logo{width:54px;height:54px;margin-bottom:14vh;",
-    "filter:drop-shadow(0 0 18px rgba(45,212,191,.55)) drop-shadow(0 0 60px rgba(45,212,191,.22));}",
-  "#" + GATE_ID + " .dg-h{font-size:17px;font-weight:600;color:#f1f5f9;margin:0 0 6px;letter-spacing:.01em;}",
-  "#" + GATE_ID + " .dg-s{font-size:12.5px;color:#94a3b8;margin:0 0 26px;line-height:1.55;max-width:300px;}",
+  "#" + GATE_ID + " .dg-stage{position:relative;z-index:2;width:min(380px,92vw);display:flex;flex-direction:column;align-items:center;text-align:center;}",
+  "#" + GATE_ID + " .dg-mark{width:44px;height:44px;margin-bottom:18px;",
+    "filter:drop-shadow(0 0 16px rgba(74,108,247,.60)) drop-shadow(0 0 52px rgba(74,108,247,.24));}",
+  "#" + GATE_ID + " .dg-word{font-size:30px;font-weight:700;letter-spacing:.30em;color:#f1f5f9;",
+    "text-shadow:0 0 18px rgba(74,108,247,.55),0 0 44px rgba(74,108,247,.25);margin:0 0 8px;padding-left:.30em;}",
+  "#" + GATE_ID + " .dg-badge{display:inline-flex;align-items:center;gap:7px;margin-bottom:22px;padding:5px 13px;",
+    "border:1px solid rgba(74,108,247,.38);background:rgba(74,108,247,.08);border-radius:999px;",
+    "font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#bccaff;}",
+  "#" + GATE_ID + " .dg-badge i{width:5px;height:5px;border-radius:50%;background:#728cf9;",
+    "box-shadow:0 0 8px rgba(114,140,249,.9);font-style:normal;}",
+  "#" + GATE_ID + " .dg-h{font-size:16px;font-weight:600;color:#f1f5f9;margin:0 0 6px;letter-spacing:.01em;}",
+  "#" + GATE_ID + " .dg-s{font-family:Spectral,Charter,Georgia,'Times New Roman',serif;font-size:14px;color:#7c8ba3;",
+    "margin:0 0 26px;line-height:1.7;max-width:320px;}",
   "#" + GATE_ID + " .dg-row{display:flex;gap:10px;width:100%;}",
-  "#" + GATE_ID + " .dg-field{flex:1;display:flex;align-items:center;gap:9px;background:rgba(10,15,22,.78);",
-    "border:1px solid rgba(148,163,184,.26);border-radius:8px;padding:0 12px;height:46px;transition:border-color .15s,box-shadow .15s;}",
-  "#" + GATE_ID + " .dg-field:focus-within{border-color:rgba(94,234,212,.55);box-shadow:0 0 0 3px rgba(45,212,191,.10);}",
-  "#" + GATE_ID + " .dg-field svg{flex:0 0 15px;opacity:.55;}",
-  "#" + GATE_ID + " .dg-field input{flex:1;min-width:0;background:none;border:none;outline:none;color:#e2e8f0;",
+  "#" + GATE_ID + " .dg-field{flex:1;display:flex;align-items:center;gap:9px;background:rgba(7,16,32,.72);",
+    "border:1px solid #16223a;border-radius:10px;padding:0 12px;height:46px;transition:border-color .15s,box-shadow .15s;}",
+  "#" + GATE_ID + " .dg-field:focus-within{border-color:rgba(114,140,249,.65);box-shadow:0 0 0 3px rgba(74,108,247,.16);}",
+  "#" + GATE_ID + " .dg-field svg{flex:0 0 15px;opacity:.5;color:#7c8ba3;}",
+  "#" + GATE_ID + " .dg-field input{flex:1;min-width:0;background:none;border:none;outline:none;color:#f1f5f9;",
     "font-size:13.5px;font-family:inherit;height:100%;}",
   "#" + GATE_ID + " .dg-field input::placeholder{color:#64748b;}",
   "#" + GATE_ID + " .dg-go{flex:0 0 46px;width:46px;height:46px;display:flex;align-items:center;justify-content:center;",
-    "background:rgba(10,15,22,.78);border:1px solid rgba(148,163,184,.26);border-radius:8px;color:#cbd5e1;cursor:pointer;transition:border-color .15s,color .15s;}",
-  "#" + GATE_ID + " .dg-go:hover{border-color:rgba(94,234,212,.55);color:#5eead4;}",
-  "#" + GATE_ID + " .dg-go:disabled{opacity:.5;cursor:wait;}",
-  "#" + GATE_ID + " .dg-go.wide{flex:auto;width:100%;font-size:13px;font-weight:600;letter-spacing:.02em;gap:8px;}",
-  "#" + GATE_ID + " .dg-or{display:flex;align-items:center;gap:12px;width:100%;margin:18px 0 2px;color:#64748b;",
+    "background:#4a6cf7;border:1px solid rgba(114,140,249,.5);border-radius:10px;color:#fff;cursor:pointer;",
+    "box-shadow:0 8px 24px -10px rgba(74,108,247,.55);transition:background .15s,transform .15s;}",
+  "#" + GATE_ID + " .dg-go:hover{background:#728cf9;}",
+  "#" + GATE_ID + " .dg-go:active{transform:translateY(1px);}",
+  "#" + GATE_ID + " .dg-go:disabled{opacity:.55;cursor:wait;}",
+  "#" + GATE_ID + " .dg-go.wide{flex:auto;width:100%;font-size:13px;font-weight:600;letter-spacing:.02em;gap:8px;font-family:inherit;}",
+  "#" + GATE_ID + " .dg-ghost{width:100%;margin-top:10px;background:rgba(10,19,34,.7);border:1px solid #16223a;border-radius:10px;",
+    "padding:12px;font-size:13px;color:#e2e8f0;cursor:pointer;font-family:inherit;transition:border-color .15s,color .15s;}",
+  "#" + GATE_ID + " .dg-ghost:hover{border-color:rgba(114,140,249,.55);color:#bccaff;}",
+  "#" + GATE_ID + " .dg-or{display:flex;align-items:center;gap:12px;width:100%;margin:20px 0 2px;color:#64748b;",
     "font-size:10px;letter-spacing:.25em;}",
-  "#" + GATE_ID + " .dg-or::before,.dg-or::after{content:\"\";flex:1;height:1px;background:rgba(148,163,184,.16);}",
-  "#" + GATE_ID + " .dg-tbtn{background:none;border:none;color:#94a3b8;font-size:12.5px;cursor:pointer;padding:10px 6px 2px;",
+  "#" + GATE_ID + " .dg-or::before,.dg-or::after{content:\"\";flex:1;height:1px;background:#16223a;}",
+  "#" + GATE_ID + " .dg-tbtn{background:none;border:none;color:#7c8ba3;font-size:12.5px;cursor:pointer;padding:10px 6px 2px;",
     "font-family:inherit;transition:color .15s;}",
-  "#" + GATE_ID + " .dg-tbtn:hover{color:#5eead4;}",
+  "#" + GATE_ID + " .dg-tbtn:hover{color:#728cf9;}",
   "#" + GATE_ID + " .dg-tbtn.dim{font-size:11.5px;color:#64748b;}",
   "#" + GATE_ID + " .dg-err{margin-top:16px;font-size:12px;color:#fda4af;background:rgba(190,18,60,.10);",
-    "border:1px solid rgba(251,113,133,.22);border-radius:8px;padding:9px 12px;line-height:1.5;display:none;max-width:320px;}",
-  "#" + GATE_ID + " .dg-ok{margin-top:18px;font-size:12.5px;color:#5eead4;line-height:1.6;max-width:320px;}",
-  "#" + GATE_ID + " .dg-note{margin-top:26px;font-size:10px;color:#475569;letter-spacing:.05em;line-height:1.7;max-width:340px;}",
-  "#" + GATE_ID + " .dg-spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(94,234,212,.30);border-top-color:#5eead4;",
+    "border:1px solid rgba(251,113,133,.22);border-radius:10px;padding:9px 12px;line-height:1.5;display:none;max-width:330px;}",
+  "#" + GATE_ID + " .dg-ok{margin-top:18px;font-size:12.5px;color:#bccaff;line-height:1.6;max-width:330px;}",
+  "#" + GATE_ID + " .dg-note{margin-top:26px;font-size:10.5px;color:#64748b;letter-spacing:.03em;line-height:1.7;max-width:340px;}",
+  "#" + GATE_ID + " .dg-spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(114,140,249,.30);border-top-color:#728cf9;",
     "border-radius:50%;animation:dgspin .8s linear infinite;vertical-align:-2px;margin-right:9px;}",
   "@keyframes dgspin{to{transform:rotate(360deg)}}"
 ].join("");
 
 var ICONS = {
   mail: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
-  arrow: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>',
+  arrow: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>',
   lock: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'
 };
 
-var TRI = '<svg class="dg-logo" viewBox="0 0 64 64" aria-label="DELTA"><defs><linearGradient id="dgtri" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7ff0dd"/><stop offset=".55" stop-color="#2dd4bf"/><stop offset="1" stop-color="#0d9488"/></linearGradient></defs><path d="M32 7 L58 53 L6 53 Z" fill="url(#dgtri)" stroke="#a7f3d0" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+/* DELTA triangle mark, accent gradient (matches hero brand blue) */
+var TRI = '<svg class="dg-mark" viewBox="0 0 64 64" aria-label="DELTA"><defs><linearGradient id="dgtri" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#728cf9"/><stop offset=".55" stop-color="#4a6cf7"/><stop offset="1" stop-color="#3350c9"/></linearGradient></defs><path d="M32 7 L58 53 L6 53 Z" fill="url(#dgtri)" stroke="#bccaff" stroke-opacity=".55" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+
+var BADGE = '<div class="dg-badge"><i></i>Quantitative research environment</div>';
+
+function header(sub) {
+  return TRI + '<div class="dg-word">DELTA</div>' + (sub ? BADGE : "") +
+    '<p class="dg-s">' + sub + '</p>';
+}
 
 function mount() {
   if (document.getElementById(GATE_ID)) return;
@@ -98,6 +129,9 @@ function mount() {
   var st = document.createElement("style");
   st.textContent = CSS;
   overlay.appendChild(st);
+  var grid = document.createElement("div");
+  grid.className = "dg-grid";
+  overlay.appendChild(grid);
   var cv = document.createElement("canvas");
   cv.className = "dg-stars";
   overlay.appendChild(cv);
@@ -125,13 +159,14 @@ function drawStars(cv) {
       ctx.fillStyle = "#e2e8f0";
       ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
     }
-    for (i = 0; i < 7; i++) {
+    for (i = 0; i < 8; i++) {
       var gx = Math.random() * W, gy = Math.random() * H;
       var gr = (Math.random() * 14 + 10) * (window.devicePixelRatio || 1);
+      var accent = i % 3 === 0;
       var g = ctx.createRadialGradient(gx, gy, 0, gx, gy, gr);
-      g.addColorStop(0, "rgba(226,232,240,.85)");
-      g.addColorStop(0.25, "rgba(226,232,240,.18)");
-      g.addColorStop(1, "rgba(226,232,240,0)");
+      g.addColorStop(0, accent ? "rgba(114,140,249,.8)" : "rgba(226,232,240,.85)");
+      g.addColorStop(0.25, accent ? "rgba(114,140,249,.16)" : "rgba(226,232,240,.18)");
+      g.addColorStop(1, "rgba(0,0,0,0)");
       ctx.globalAlpha = 1;
       ctx.fillStyle = g;
       ctx.beginPath(); ctx.arc(gx, gy, gr, 0, 6.2832); ctx.fill();
@@ -149,7 +184,7 @@ function showError(msg) {
 }
 function showInfo(msg) {
   var e = $("#dg-err", card);
-  if (e) { e.textContent = msg; e.style.display = "block"; e.style.color = "#5eead4"; }
+  if (e) { e.textContent = msg; e.style.display = "block"; e.style.color = "#bccaff"; }
 }
 
 function field(id, type, placeholder, icon, autocomplete) {
@@ -159,10 +194,10 @@ function field(id, type, placeholder, icon, autocomplete) {
 
 var SCREENS = {
   start: function () {
-    return TRI +
+    return header("An institutional portfolio-construction workspace. Sign in to run optimizations and backtests.") +
       '<form data-form="send-link" style="width:100%;display:flex;flex-direction:column;align-items:center">' +
       '<div class="dg-row">' + field("dg-email", "email", "name@example.com", "mail", "email") +
-      '<button type="submit" class="dg-go" data-go="1" title="Continue">' + ICONS.arrow + '</button></div></form>' +
+      '<button type="submit" class="dg-go" title="Continue">' + ICONS.arrow + '</button></div></form>' +
       '<div class="dg-or">OR</div>' +
       '<button class="dg-tbtn" data-act="guest">Continue as Guest</button>' +
       '<button class="dg-tbtn dim" data-act="signin">Sign in with password</button>' +
@@ -170,17 +205,15 @@ var SCREENS = {
       '<div class="dg-note">New here? Enter your email and we&rsquo;ll send a verification link &mdash; you pick a password after verifying.</div>';
   },
   signupSent: function () {
-    return TRI +
-      '<h2 class="dg-h">Check your inbox</h2>' +
-      '<p class="dg-s">We sent a verification link to <b style="color:#5eead4">' + esc(pendingEmail) + '</b>. Open it on this device &mdash; this page continues automatically, then you pick your password.</p>' +
+    return header("Verification link sent.") +
+      '<p class="dg-s">We emailed a verification link to <b style="color:#bccaff">' + esc(pendingEmail) + '</b>. Open it on this device &mdash; this page continues automatically, then you pick your password.</p>' +
       '<button class="dg-go wide" data-act="resend" id="dg-resend">Resend link</button>' +
       '<button class="dg-tbtn dim" data-act="start">Use a different email</button>' +
       '<div class="dg-err" id="dg-err"></div>' +
       '<div class="dg-note">Sent from noreply@delta-71243.firebaseapp.com &mdash; not there? Check <b>Spam</b>. Some providers block this sender; Gmail works best.</div>';
   },
   finishEmail: function () {
-    return TRI +
-      '<h2 class="dg-h">One more step</h2>' +
+    return header("One more step.") +
       '<p class="dg-s">Enter the email you verified with to finish setting up your account.</p>' +
       '<form data-form="complete-link" style="width:100%;display:flex;flex-direction:column;align-items:center">' +
       '<div class="dg-row">' + field("dg-email2", "email", "name@example.com", "mail", "email") +
@@ -188,9 +221,7 @@ var SCREENS = {
       '<div class="dg-err" id="dg-err"></div>';
   },
   signIn: function () {
-    return TRI +
-      '<h2 class="dg-h">Welcome back</h2>' +
-      '<p class="dg-s">Sign in with your email and password.</p>' +
+    return header("Welcome back.") +
       '<form data-form="do-signin" style="width:100%;display:flex;flex-direction:column;align-items:center;gap:10px">' +
       '<div style="width:100%">' + field("dg-email", "email", "name@example.com", "mail", "email") + '</div>' +
       '<div style="width:100%">' + field("dg-pass", "password", "Password", "lock", "current-password") + '</div>' +
@@ -200,8 +231,7 @@ var SCREENS = {
       '<div class="dg-err" id="dg-err"></div>';
   },
   forgot: function () {
-    return TRI +
-      '<h2 class="dg-h">Reset password</h2>' +
+    return header("Reset password.") +
       '<p class="dg-s">We will email you a link to set a new password.</p>' +
       '<form data-form="do-reset" style="width:100%;display:flex;flex-direction:column;align-items:center">' +
       '<div class="dg-row">' + field("dg-email", "email", "name@example.com", "mail", "email") +
@@ -210,9 +240,7 @@ var SCREENS = {
       '<div class="dg-err" id="dg-err"></div>';
   },
   setPassword: function () {
-    return TRI +
-      '<h2 class="dg-h">Create your password</h2>' +
-      '<p class="dg-s">Your email is verified. Choose a password of at least 8 characters.</p>' +
+    return header("Email verified. Create your password.") +
       '<form data-form="do-password" style="width:100%;display:flex;flex-direction:column;align-items:center;gap:10px">' +
       '<div style="width:100%">' + field("dg-p1", "password", "Password (min 8)", "lock", "new-password") + '</div>' +
       '<div style="width:100%">' + field("dg-p2", "password", "Confirm password", "lock", "new-password") + '</div>' +
@@ -220,8 +248,7 @@ var SCREENS = {
       '<div class="dg-err" id="dg-err"></div>';
   },
   ready: function () {
-    return TRI +
-      '<h2 class="dg-h">' + (state === "readyNew" ? "Account created" : "Signed in") + '</h2>' +
+    return header(state === "readyNew" ? "Account created." : "Signed in.") +
       '<p class="dg-s">' + esc(pendingEmail || "") + '</p>' +
       '<div class="dg-ok"><span class="dg-spin"></span>Email verified. Entering the workspace...</div>';
   }
