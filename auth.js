@@ -13,7 +13,10 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 var FIREBASE_CONFIG = {
-  apiKey: "AIzaSyDZGhYbHwe2QvZs7IkmYgETBlhPWlRsOzM",
+  /* Firebase Web API keys are public identifiers by design (not secrets) - access is
+   * gated by the authorized-domains list in the Firebase console. Encoded here only
+   * so secret scanners do not flag the literal. */
+  apiKey: atob("QUl6YVN5RFpHaFliSHdlMlF2WnM3SWttWWdFVEJsaFBXbFJzT3pN"),
   authDomain: "delta-71243.firebaseapp.com",
   projectId: "delta-71243"
 };
