@@ -323,7 +323,11 @@ function boot() {
 
   onAuthStateChanged(auth, function (user) {
     firebaseHasUser = !!(user && user.emailVerified);
-    if (!user) { enforceGate(); return; }
+    if (!user) {
+      /* landing page (/) stays public - only the workspace (/dashboard) is gated */
+      if (location.pathname.indexOf("/dashboard") === 0) enforceGate();
+      return;
+    }
     if (!user.emailVerified) return;
     if (user && user.emailVerified) {
       if (state === "setPassword" || state === "ready" || state === "readyNew") return;
@@ -370,7 +374,7 @@ function boot() {
 
   setInterval(function () {
     onRouteChange();
-    if (!firebaseHasUser && location.pathname.indexOf("/auth") !== 0) { enforceGate(); return; }
+    if (!firebaseHasUser && location.pathname.indexOf("/dashboard") === 0) { enforceGate(); return; }
     if (location.pathname.indexOf("/auth") === 0) return;
     var all = document.querySelectorAll("button"), i, b;
     for (i = 0; i < all.length; i++) {
