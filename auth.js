@@ -28,6 +28,7 @@ var GUEST_KEY = "delta.guestMode";
 var ENTER_KEY = "delta.entered"; /* sessionStorage marker written by an explicit entry */
 var GATE_ID = "delta-gate";
 var GUEST_RE = /continue\s+as\s+guest/i;
+var DEPLOY_VERSION = 9;
 
 var auth = null, overlay = null, card = null;
 var state = "start", busy = false, wizardActive = false;
@@ -558,6 +559,23 @@ function rewriteHeroCtas() {
 }
 
 function boot() {
+  /* self-healing deploys: if the live site is newer than this script, reload
+   * once so users never run stale logic or need a manual hard refresh */
+  try {
+    fetch("/auth-deploy.txt?cb=" + Date.now(), { cache: "no-store" })
+      .then(function (r) { return r.text(); })
+      .then(function (t) {
+        var v = parseInt(String(t).replace(/[^0-9]/g, ""), 10) || 0;
+        var seen = 0;
+        try { seen = parseInt(sessionStorage.getItem("delta.upgraded"), 10) || 0; } catch (e) {}
+        if (v > DEPLOY_VERSION && seen !== v) {
+          try { sessionStorage.setItem("delta.upgraded", String(v)); } catch (e) {}
+          location.reload();
+        }
+      })
+      .catch(function () {});
+  } catch (e) {}
+
   /* react to SPA navigations instantly: the 700ms poll alone lets the app's
    * own pages flash without the gate between transitions */
   (function () {

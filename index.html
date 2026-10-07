@@ -30,6 +30,16 @@
          * referrer), the from=hero CTA stamp, or the email flow (mode=)
          * reaches the login directly. */
         if (location.pathname.indexOf("/auth") === 0) {
+          /* kill any leftover app session BEFORE the bundle restores it -
+           * otherwise the app auto-navigates to /dashboard and bounces the
+           * user back to the landing page (fails first try, works second) */
+          var ai, ak, aks = [];
+          for (ai = 0; ai < localStorage.length; ai++) aks.push(localStorage.key(ai));
+          for (ai = 0; ai < aks.length; ai++) {
+            ak = aks[ai];
+            if (/^__convexAuth(JWT|RefreshToken)_/.test(ak)) localStorage.removeItem(ak);
+          }
+          try { localStorage.removeItem("delta.guestMode"); } catch (e) {}
           if (nav === "navigate" && !sameOriginRef &&
               location.search.indexOf("from=hero") === -1 &&
               location.search.indexOf("mode=") === -1) location.replace("/");
@@ -55,7 +65,7 @@
   </script>
   <script type="module" crossorigin src="./assets/index-CdKtwxjC.js"></script>
   <script defer src="./calc-details.js"></script>
-  <script type="module" src="./auth.js?v=8"></script>
+  <script type="module" src="./auth.js?v=9"></script>
   <link rel="modulepreload" crossorigin href="./assets/react-vendor-BuDGsmEW.js">
   <link rel="modulepreload" crossorigin href="./assets/framer-motion-gCUuqS5H.js">
   <link rel="modulepreload" crossorigin href="./assets/radix-ui-BKIar3ZK.js">
