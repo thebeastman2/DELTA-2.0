@@ -13,9 +13,32 @@
     href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=Spectral:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap"
     rel="stylesheet"
   />
+  <script>
+    /* DELTA gate guard (runs before the app bundle): a fresh visit to the
+     * workspace must pass the login page. Only an in-tab reload of an
+     * already-active session may continue silently. */
+    (function () {
+      try {
+        if (location.pathname.indexOf("/dashboard") !== 0) return;
+        var nav = (performance.getEntriesByType("navigation")[0] || {}).type || "navigate";
+        if (nav === "reload") return;
+        try {
+          var et = parseInt(sessionStorage.getItem("delta.entered"), 10);
+          if (et > 0 && (Date.now() - et) < 30000) return; /* explicit entry just happened */
+        } catch (e) {}
+        var i, k, ks = [];
+        for (i = 0; i < localStorage.length; i++) ks.push(localStorage.key(i));
+        for (i = 0; i < ks.length; i++) {
+          k = ks[i];
+          if (/^__convexAuth(JWT|RefreshToken)_/.test(k)) localStorage.removeItem(k);
+        }
+        try { localStorage.removeItem("delta.guestMode"); } catch (e) {}
+      } catch (e) {}
+    })();
+  </script>
   <script type="module" crossorigin src="./assets/index-CdKtwxjC.js"></script>
   <script defer src="./calc-details.js"></script>
-  <script type="module" src="./auth.js?v=4"></script>
+  <script type="module" src="./auth.js?v=5"></script>
   <link rel="modulepreload" crossorigin href="./assets/react-vendor-BuDGsmEW.js">
   <link rel="modulepreload" crossorigin href="./assets/framer-motion-gCUuqS5H.js">
   <link rel="modulepreload" crossorigin href="./assets/radix-ui-BKIar3ZK.js">

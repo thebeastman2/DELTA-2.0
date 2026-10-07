@@ -3,7 +3,10 @@
  *   bg #060b13, accent #4a6cf7, delta-grid overlay, delta-glow-text wordmark,
  *   Space Grotesk headings, Spectral serif subtitles, primary accent buttons.
  * Flow: email -> verification link -> set password (min 8) -> enter DELTA.
- * Returning users: "Sign in with password". Guest: app's own guest session.
+ * Returning users: "Sign in with password", or a one-click "Enter DELTA" when
+ * a verified session exists. Guest: app's own guest session.
+ * RULE: a fresh visit to the workspace always requires one explicit click at
+ * the login page; only an in-tab reload of an active session continues.
  */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
@@ -22,13 +25,38 @@ var FIREBASE_CONFIG = {
 };
 var EMAIL_KEY = "delta.firebaseEmail";
 var GUEST_KEY = "delta.guestMode";
+var ENTER_KEY = "delta.entered"; /* sessionStorage marker written by an explicit entry */
 var GATE_ID = "delta-gate";
 var GUEST_RE = /continue\s+as\s+guest/i;
 
 var auth = null, overlay = null, card = null;
-var state = "start", busy = false, bridged = false, wizardActive = false;
+var state = "start", busy = false, wizardActive = false;
 var firebaseHasUser = false;
 var pendingEmail = null, resendUntil = 0;
+var enteredAt = 0, bridgeRun = 0, bridging = false;
+
+/* Every FRESH page visit needs one explicit click at the login page. An
+ * in-tab reload of an already-active session (browser refresh) continues. */
+var enteredThisLife = false;
+var INITIAL_NAV = (function () {
+  try { var n = performance.getEntriesByType("navigation")[0]; return n ? n.type : "navigate"; } catch (e) { return "navigate"; }
+})();
+function hasAppSession() {
+  try {
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (/^__convexAuthJWT_/.test(k) && localStorage.getItem(k)) return true;
+    }
+  } catch (e) {}
+  return false;
+}
+function freshEnter() {
+  try {
+    var t = parseInt(sessionStorage.getItem(ENTER_KEY), 10);
+    return t > 0 && (Date.now() - t) < 30000;
+  } catch (e) { return false; }
+}
+function sessionActive() { return enteredThisLife || freshEnter() || (INITIAL_NAV === "reload" && hasAppSession()); }
 
 function $(sel, root) { return (root || document).querySelector(sel); }
 function esc(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; }
@@ -251,6 +279,17 @@ var SCREENS = {
       '<button type="submit" class="dg-go wide" style="margin-top:6px">Enter DELTA&nbsp;&nbsp;' + ICONS.arrow + '</button></form>' +
       '<div class="dg-err" id="dg-err"></div>';
   },
+  entering: function () {
+    return header("Guest session.") +
+      '<div class="dg-ok"><span class="dg-spin"></span>Entering the workspace...</div>';
+  },
+  readyWait: function () {
+    return header("Welcome back.") +
+      '<p class="dg-s">' + esc(pendingEmail || "Your verified session is still active on this device.") + '</p>' +
+      '<button class="dg-go wide" data-act="enter-ready">Enter DELTA&nbsp;&nbsp;' + ICONS.arrow + '</button>' +
+      '<button class="dg-tbtn dim" data-act="switch">Use a different account</button>' +
+      '<div class="dg-err" id="dg-err"></div>';
+  },
   ready: function () {
     return header(state === "readyNew" ? "Account created." : "Signed in.") +
       '<p class="dg-s">' + esc(pendingEmail || "") + '</p>' +
@@ -284,29 +323,55 @@ function getErr(e) {
 }
 
 function bridgeToApp() {
-  if (bridged) return;
-  bridged = true;
-  var attempts = 0;
-  var tryClick = function () {
-    var btn = null, all = document.querySelectorAll("button"), i;
+  bridgeRun++;
+  var gen = bridgeRun;
+  enteredThisLife = true; /* this page visit entered via explicit user action */
+  bridging = true;
+  var stableSince = 0, tries = 0, clicks = 0;
+  /* Click the app's own "Continue as Guest" and then WATCH passively: the app
+   * signs in and navigates itself. Its router may flap back to its own login
+   * page while its auth state resolves - retry its guest button sparingly
+   * (each sign-in mints a new session, so never click in a tight loop) until
+   * the workspace has held /dashboard for 1.5s. Wipe nothing meanwhile. */
+  var clickAppGuest = function () {
+    var all = document.querySelectorAll("button"), i, b;
     for (i = 0; i < all.length; i++) {
-      if (GUEST_RE.test(all[i].textContent || "")) { btn = all[i]; break; }
+      b = all[i];
+      if (GUEST_RE.test(b.textContent || "") && b.style.display !== "none") { b.click(); return true; }
     }
-    if (btn) { btn.click(); return true; }
     return false;
   };
-  if (tryClick()) return;
-  var mo = new MutationObserver(function () { if (tryClick()) mo.disconnect(); });
-  mo.observe(document.body, { childList: true, subtree: true });
-  var iv = setInterval(function () {
-    attempts++;
-    if (tryClick() || attempts > 40) { clearInterval(iv); mo.disconnect(); }
-  }, 400);
+  var restoreWizard = function () {
+    bridging = false;
+    state = firebaseHasUser ? "readyWait" : "start";
+    wizardActive = true;
+    if (!overlay && location.pathname.indexOf("/auth") === 0) mount();
+    paint();
+    var e = $("#dg-err", card);
+    if (e) { e.textContent = "The workspace closed the guest session by itself - please try again."; e.style.display = "block"; e.style.color = "#bccaff"; }
+  };
+  clickAppGuest(); clicks = 1;
+  var tick = function () {
+    if (gen !== bridgeRun) return;
+    if (location.pathname.indexOf("/dashboard") === 0) {
+      if (!stableSince) stableSince = Date.now();
+      if (Date.now() - stableSince > 1500) { bridging = false; return; }
+    } else {
+      stableSince = 0;
+      if (clicks < 3 && tries % 12 === 0) { clickAppGuest(); clicks++; }
+    }
+    tries++;
+    if (tries < 60) { setTimeout(tick, 250); return; }
+    restoreWizard();
+  };
+  setTimeout(tick, 250);
 }
 
 function enterReady(isNew) {
   state = isNew ? "readyNew" : "ready";
   wizardActive = false;
+  enteredAt = Date.now();
+  try { sessionStorage.setItem(ENTER_KEY, String(Date.now())); } catch (e) {}
   try { localStorage.removeItem(GUEST_KEY); } catch (e) {}
   paint();
   bridgeToApp();
@@ -314,7 +379,14 @@ function enterReady(isNew) {
 
 function enterGuest() {
   try { localStorage.setItem(GUEST_KEY, "1"); } catch (e) {}
-  if (overlay) { overlay.remove(); overlay = null; card = null; }
+  try { sessionStorage.setItem(ENTER_KEY, String(Date.now())); } catch (e) {}
+  /* keep the wizard up in an "entering" state until the app actually
+   * navigates - removing it here would let the /auth route watcher wipe the
+   * guest session while the app's own anonymous sign-in is still in flight */
+  state = "entering";
+  wizardActive = false;
+  enteredAt = Date.now();
+  paint();
   bridgeToApp();
 }
 
@@ -322,13 +394,16 @@ function onRouteChange() {
   var onAuth = location.pathname.indexOf("/auth") === 0;
   if (!onAuth && overlay) {
     overlay.remove(); overlay = null; card = null;
+    if (state === "entering" || state === "ready" || state === "readyNew") state = "start";
   }
   /* SPA navigation into /auth (e.g. clicking Launch workspace on the landing
    * page) never reloads the page, so remount the wizard when we arrive. */
-  if (onAuth && !overlay) {
+  if (onAuth && !overlay && !bridging) {
     clearAppSession();
+    try { localStorage.removeItem(GUEST_KEY); } catch (e) {}
+    try { sessionStorage.removeItem(ENTER_KEY); } catch (e) {}
     wizardActive = true;
-    if (state === "ready" || state === "readyNew") state = "start";
+    if (state === "ready" || state === "readyNew" || state === "entering") state = "start";
     mount(); paint();
   }
 }
@@ -340,6 +415,13 @@ function act(a) {
   if (a === "signin") { state = "signIn"; wizardActive = true; paint(); return; }
   if (a === "forgot") { state = "forgot"; wizardActive = true; paint(); return; }
   if (a === "guest") { enterGuest(); return; }
+  if (a === "enter-ready") { enterReady(false); return; }
+  if (a === "switch") {
+    try { firebaseSignOut(auth); } catch (e) {}
+    pendingEmail = null;
+    state = "start"; wizardActive = true; paint();
+    return;
+  }
   if (a === "send-link") {
     emailEl = $("#dg-email", card);
     em = emailEl ? emailEl.value.trim() : "";
@@ -429,28 +511,28 @@ function finishEmailLink(em) {
 function boot() {
   try { auth = getAuth(initializeApp(FIREBASE_CONFIG)); } catch (e) { return; }
 
-  var guestNow = false;
-  try { guestNow = localStorage.getItem(GUEST_KEY) === "1"; } catch (e) {}
-
   onAuthStateChanged(auth, function (user) {
     firebaseHasUser = !!(user && user.emailVerified);
-    if (!user) {
-      /* landing page (/) stays public - only the workspace (/dashboard) is gated */
-      if (!guestNow && location.pathname.indexOf("/dashboard") === 0) enforceGate();
-      return;
+    /* landing page (/) stays public - only the workspace (/dashboard) is gated */
+    if (location.pathname.indexOf("/dashboard") === 0) {
+      if (!sessionActive()) { enforceGate(); return; }
+      if (!user || !user.emailVerified) return; /* guest / unverified mid-session */
     }
+    if (!user) return;
     if (!user.emailVerified) return;
     if (state === "setPassword" || state === "ready" || state === "readyNew") return;
     if (wizardActive && (state === "signupSent" || state === "finishEmail")) return;
     /* On /auth always WAIT for an explicit click - never auto-enter, even when
-     * a verified session already exists. Auto-enter only for direct /dashboard
-     * hits by returning users. */
+     * a verified session already exists. Offer a one-click "Enter DELTA". */
     if (location.pathname.indexOf("/auth") === 0) {
       if (!overlay) { wizardActive = true; mount(); }
+      if (state === "start" || state === "signIn" || state === "forgot" || state === "readyWait") {
+        pendingEmail = user.email;
+        state = "readyWait";
+      }
       paint();
       return;
     }
-    if (!bridged) { state = "ready"; pendingEmail = user.email; paint(); bridgeToApp(); }
   });
 
   if (isSignInWithEmailLink(auth, location.href)) {
@@ -462,10 +544,23 @@ function boot() {
   }
 
   if (location.pathname.indexOf("/auth") === 0) {
-    /* kill any lingering app session so the app router cannot bounce us into
-     * the workspace before the user makes a choice */
+    /* kill any lingering app session + guest flag so the workspace can only be
+     * entered by an explicit choice on this page */
     clearAppSession();
+    try { localStorage.removeItem(GUEST_KEY); } catch (e) {}
+    try { sessionStorage.removeItem(ENTER_KEY); } catch (e) {}
     wizardActive = true; mount(); paint();
+  } else if (location.pathname.indexOf("/dashboard") === 0) {
+    /* an explicit entry (guest click / sign-in) can hand off across a full
+     * page navigation - consume its marker exactly once, then hold the line */
+    if (freshEnter()) {
+      enteredThisLife = true;
+      try { sessionStorage.removeItem(ENTER_KEY); } catch (e) {}
+    } else if (!sessionActive()) {
+      /* fresh visit straight to the workspace: bounce to the login page */
+      enforceGate();
+      return;
+    }
   }
 
   document.addEventListener("click", function (ev) {
@@ -480,7 +575,9 @@ function boot() {
     }
     if (/^sign out$/i.test((b.textContent || "").trim())) {
       try { firebaseSignOut(auth); } catch (e) {}
+      enteredThisLife = false; /* re-engage the gate after signing out */
       try { localStorage.removeItem(EMAIL_KEY); localStorage.removeItem(GUEST_KEY); } catch (e) {}
+      try { sessionStorage.removeItem(ENTER_KEY); } catch (e) {}
     }
   }, true);
 
@@ -497,19 +594,17 @@ function boot() {
   }, true);
 
   setInterval(function () {
-    guestNow = false;
-    try { guestNow = localStorage.getItem(GUEST_KEY) === "1"; } catch (e) {}
     onRouteChange();
-    if (!firebaseHasUser && !guestNow && location.pathname.indexOf("/dashboard") === 0) { enforceGate(); return; }
-    /* returning guest: flag set but the app session was cleared (e.g. after a
-     * visit to /auth) - silently re-establish it so the workspace reopens */
-    if (!firebaseHasUser && guestNow && location.pathname.indexOf("/dashboard") === 0 && !bridged) {
-      var gb = null, ga = document.querySelectorAll("button"), gi;
-      for (gi = 0; gi < ga.length; gi++) {
-        if (GUEST_RE.test(ga[gi].textContent || "")) { gb = ga[gi]; break; }
-      }
-      if (gb) { bridged = true; gb.click(); }
+    /* if the app never navigates after an explicit entry, restore the wizard
+     * so the user can retry (bridge may have failed silently) */
+    if (!bridging && overlay && (state === "entering" || state === "ready" || state === "readyNew") && Date.now() - enteredAt > 6000) {
+      state = firebaseHasUser ? "readyWait" : "start";
+      wizardActive = true;
+      paint();
     }
+    /* every fresh visit to the workspace needs one explicit click at the login
+     * page - no silent re-entry, not even for returning guests */
+    if (location.pathname.indexOf("/dashboard") === 0 && !sessionActive()) { enforceGate(); return; }
     if (location.pathname.indexOf("/auth") === 0) return;
     var all = document.querySelectorAll("button"), i, b;
     for (i = 0; i < all.length; i++) {
