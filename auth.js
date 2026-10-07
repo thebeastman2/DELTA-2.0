@@ -95,14 +95,14 @@ var CSS = [
   "#" + GATE_ID + " .dg-stars{position:absolute;inset:0;width:100%;height:100%;}",
   "#" + GATE_ID + " .dg-stage{position:relative;z-index:2;width:min(380px,92vw);display:flex;flex-direction:column;align-items:center;text-align:center;}",
   "#" + GATE_ID + " .dg-mark{width:44px;height:44px;margin-bottom:18px;",
-    "filter:drop-shadow(0 0 16px rgba(74,108,247,.60)) drop-shadow(0 0 52px rgba(74,108,247,.24));}",
+    "filter:drop-shadow(0 0 14px rgba(62,207,196,.55)) drop-shadow(0 0 46px rgba(62,207,196,.22));}",
   "#" + GATE_ID + " .dg-word{font-size:30px;font-weight:700;letter-spacing:.30em;color:#f1f5f9;",
     "text-shadow:0 0 18px rgba(74,108,247,.55),0 0 44px rgba(74,108,247,.25);margin:0 0 8px;padding-left:.30em;}",
   "#" + GATE_ID + " .dg-badge{display:inline-flex;align-items:center;gap:7px;margin-bottom:22px;padding:5px 13px;",
     "border:1px solid rgba(74,108,247,.38);background:rgba(74,108,247,.08);border-radius:999px;",
-    "font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#bccaff;}",
-  "#" + GATE_ID + " .dg-badge i{width:5px;height:5px;border-radius:50%;background:#728cf9;",
-    "box-shadow:0 0 8px rgba(114,140,249,.9);font-style:normal;}",
+    "font-size:12px;letter-spacing:.01em;color:#bccaff;}",
+  "#" + GATE_ID + " .dg-badge i{color:#728cf9;font-style:normal;font-size:12px;line-height:1;",
+    "text-shadow:0 0 8px rgba(114,140,249,.9);}",
   "#" + GATE_ID + " .dg-h{font-size:16px;font-weight:600;color:#f1f5f9;margin:0 0 6px;letter-spacing:.01em;}",
   "#" + GATE_ID + " .dg-s{font-family:Spectral,Charter,Georgia,'Times New Roman',serif;font-size:14px;color:#7c8ba3;",
     "margin:0 0 26px;line-height:1.7;max-width:320px;}",
@@ -146,10 +146,10 @@ var ICONS = {
   lock: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'
 };
 
-/* DELTA triangle mark, accent gradient (matches hero brand blue) */
-var TRI = '<svg class="dg-mark" viewBox="0 0 64 64" aria-label="DELTA"><defs><linearGradient id="dgtri" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#728cf9"/><stop offset=".55" stop-color="#4a6cf7"/><stop offset="1" stop-color="#3350c9"/></linearGradient></defs><path d="M32 7 L58 53 L6 53 Z" fill="url(#dgtri)" stroke="#bccaff" stroke-opacity=".55" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+/* DELTA triangle mark - teal gradient like the hero's 3D logo */
+var TRI = '<svg class="dg-mark" viewBox="0 0 64 64" aria-label="DELTA"><defs><linearGradient id="dgtri" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#9ff0e8"/><stop offset=".55" stop-color="#3ecfc4"/><stop offset="1" stop-color="#1a9e97"/></linearGradient></defs><path d="M32 7 L58 53 L6 53 Z" fill="url(#dgtri)" stroke="#a9f2ea" stroke-opacity=".5" stroke-width="1.5" stroke-linejoin="round"/></svg>';
 
-var BADGE = '<div class="dg-badge"><i></i>Quantitative research environment</div>';
+var BADGE = '<div class="dg-badge"><i>✦</i>Quantitative research environment</div>';
 
 function header(sub) {
   return TRI + '<div class="dg-word">DELTA</div>' + (sub ? BADGE : "") +
@@ -176,39 +176,76 @@ function mount() {
   drawStars(cv);
 }
 
+/* Animated starfield - a faithful port of the app's own background
+ * (assets/StarfieldBackground-4VuLm523.js): drifting, twinkling stars with
+ * rare bright halos over #010304, wobbling exactly like the hero/engine. */
 function drawStars(cv) {
-  function fit() {
-    cv.width = cv.clientWidth * (window.devicePixelRatio || 1);
-    cv.height = cv.clientHeight * (window.devicePixelRatio || 1);
-    paint();
+  var COLORS = ["255,255,255", "232,238,238", "201,212,212"];
+  var ctx = cv.getContext("2d");
+  if (!ctx) return;
+  var W = 0, H = 0, stars = [], last = 0;
+  var reduced = false;
+  try { reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+  function makeStar() {
+    var e = Math.pow(Math.random(), 1.5);
+    var d = (0.35 + e * 3.4) * (0.7 + Math.random() * 0.6) * 0.7;
+    var a = 0.25 + Math.random() * 0.14;
+    return {
+      x: Math.random() * W, y: Math.random() * H,
+      vx: Math.cos(a) * d, vy: Math.sin(a) * d,
+      size: 0.5 + e * e * 2.4,
+      alpha: 0.24 + e * 0.72 + Math.random() * 0.22,
+      rgb: COLORS[Math.floor(Math.random() * COLORS.length)],
+      twinkle: Math.random() < 0.04, twPhase: Math.random() * 6.2832, twRate: 0.2 + Math.random() * 0.7,
+      wobPhase: Math.random() * 6.2832, wobRate: 0.12 + Math.random() * 0.22,
+      bright: Math.random() < 0.015
+    };
   }
-  function paint() {
-    var ctx = cv.getContext("2d");
-    var W = cv.width, H = cv.height, i;
-    ctx.clearRect(0, 0, W, H);
-    for (i = 0; i < 150; i++) {
-      var x = Math.random() * W, y = Math.random() * H;
-      var r = (Math.random() * 1.1 + 0.3) * (window.devicePixelRatio || 1);
-      ctx.globalAlpha = Math.random() * 0.75 + 0.15;
-      ctx.fillStyle = "#e2e8f0";
-      ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
+  function fit() {
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = Math.max(1, Math.floor(W * dpr));
+    cv.height = Math.max(1, Math.floor(H * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    stars = [];
+    var n = Math.max(60, Math.min(700, Math.floor(W * H / 4200))), i;
+    for (i = 0; i < n; i++) stars.push(makeStar());
+    if (reduced) frame(0, 0.016); /* one static frame, no motion */
+  }
+  function frame(t, dt) {
+    var i, s, b, x, g;
+    ctx.fillStyle = "#010304";
+    ctx.fillRect(0, 0, W, H);
+    for (i = 0; i < stars.length; i++) {
+      s = stars[i];
+      s.x += s.vx * dt + Math.cos(t * s.wobRate + s.wobPhase) * 0.25;
+      s.y += s.vy * dt + Math.sin(t * s.wobRate * 0.83 + s.wobPhase) * 0.25;
+      if (s.x < -3) s.x = W + 3; else if (s.x > W + 3) s.x = -3;
+      if (s.y < -3) s.y = H + 3; else if (s.y > H + 3) s.y = -3;
+      b = s.twinkle ? 0.55 + 0.45 * Math.sin(t * s.twRate + s.twPhase) : 1;
+      x = s.alpha * b;
+      ctx.fillStyle = "rgba(" + s.rgb + "," + x.toFixed(3) + ")";
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.size / 2, 0, 6.2832); ctx.fill();
+      if (s.bright) {
+        g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.size * 5);
+        g.addColorStop(0, "rgba(" + s.rgb + "," + (x * 0.3).toFixed(3) + ")");
+        g.addColorStop(1, "rgba(" + s.rgb + ",0)");
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.size * 5, 0, 6.2832); ctx.fill();
+      }
     }
-    for (i = 0; i < 8; i++) {
-      var gx = Math.random() * W, gy = Math.random() * H;
-      var gr = (Math.random() * 14 + 10) * (window.devicePixelRatio || 1);
-      var accent = i % 3 === 0;
-      var g = ctx.createRadialGradient(gx, gy, 0, gx, gy, gr);
-      g.addColorStop(0, accent ? "rgba(114,140,249,.8)" : "rgba(226,232,240,.85)");
-      g.addColorStop(0.25, accent ? "rgba(114,140,249,.16)" : "rgba(226,232,240,.18)");
-      g.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(gx, gy, gr, 0, 6.2832); ctx.fill();
-    }
-    ctx.globalAlpha = 1;
+  }
+  function loop(now) {
+    /* the gate can be unmounted mid-session - stop when its canvas is gone */
+    if (!cv.isConnected) { window.removeEventListener("resize", fit); return; }
+    var dt = last === 0 ? 0.016 : Math.min((now - last) / 1000, 0.05);
+    last = now;
+    frame(now / 1000, dt);
+    requestAnimationFrame(loop);
   }
   fit();
   window.addEventListener("resize", fit);
+  if (!reduced) requestAnimationFrame(loop);
 }
 
 function showError(msg) {
