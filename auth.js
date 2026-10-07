@@ -74,7 +74,9 @@ function clearAppSession() {
 
 function enforceGate() {
   clearAppSession();
-  if (location.pathname.indexOf("/auth") !== 0) location.replace("/auth");
+  /* landing-first: a fresh hit on the workspace goes to the landing page;
+   * the login is one click from there (hero CTA) */
+  if (location.pathname.indexOf("/dashboard") === 0) location.replace("/");
 }
 
 /* ---- design tokens lifted from the app CSS (index-CIBBl9-n.css) ----
@@ -508,6 +510,16 @@ function finishEmailLink(em) {
     });
 }
 
+function rewriteHeroCtas() {
+  if (location.pathname !== "/") return;
+  var as = document.querySelectorAll('a[href*="/auth"]'), i, h;
+  for (i = 0; i < as.length; i++) {
+    h = as[i].getAttribute("href") || "";
+    if (h.indexOf("from=hero") !== -1) continue;
+    as[i].setAttribute("href", h + (h.indexOf("?") === -1 ? "?" : "&") + "from=hero");
+  }
+}
+
 function boot() {
   try { auth = getAuth(initializeApp(FIREBASE_CONFIG)); } catch (e) { return; }
 
@@ -543,6 +555,16 @@ function boot() {
     return;
   }
 
+  /* landing-first flow: a fresh arrival at the bare login page (bookmark,
+   * address-bar autocomplete, restored tab) starts at the landing page;
+   * the hero CTA carries from=hero and the email-link flow carries mode= -
+   * both reach the login directly. Reloading the login page stays put. */
+  if (INITIAL_NAV === "navigate" && location.pathname.indexOf("/auth") === 0 &&
+      location.search.indexOf("from=hero") === -1 && location.search.indexOf("mode=") === -1) {
+    location.replace("/");
+    return;
+  }
+
   if (location.pathname.indexOf("/auth") === 0) {
     /* kill any lingering app session + guest flag so the workspace can only be
      * entered by an explicit choice on this page */
@@ -557,7 +579,7 @@ function boot() {
       enteredThisLife = true;
       try { sessionStorage.removeItem(ENTER_KEY); } catch (e) {}
     } else if (!sessionActive()) {
-      /* fresh visit straight to the workspace: bounce to the login page */
+      /* fresh visit straight to the workspace: landing page first, then login */
       enforceGate();
       return;
     }
@@ -595,6 +617,7 @@ function boot() {
 
   setInterval(function () {
     onRouteChange();
+    rewriteHeroCtas();
     /* if the app never navigates after an explicit entry, restore the wizard
      * so the user can retry (bridge may have failed silently) */
     if (!bridging && overlay && (state === "entering" || state === "ready" || state === "readyNew") && Date.now() - enteredAt > 6000) {
