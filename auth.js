@@ -28,7 +28,7 @@ var GUEST_KEY = "delta.guestMode";
 var ENTER_KEY = "delta.entered"; /* sessionStorage marker written by an explicit entry */
 var GATE_ID = "delta-gate";
 var GUEST_RE = /continue\s+as\s+guest/i;
-var DEPLOY_VERSION = 9;
+var DEPLOY_VERSION = 10;
 
 var auth = null, overlay = null, card = null;
 var state = "start", busy = false, wizardActive = false;
@@ -574,6 +574,14 @@ function boot() {
         }
       })
       .catch(function () {});
+  } catch (e) {}
+
+  /* keep page loads off stale caches: the worker fetches HTML from the
+   * network first, so every deploy applies on the next navigation */
+  try {
+    if ("serviceWorker" in navigator && location.protocol === "https:") {
+      navigator.serviceWorker.register("/sw.js").catch(function () {});
+    }
   } catch (e) {}
 
   /* react to SPA navigations instantly: the 700ms poll alone lets the app's
