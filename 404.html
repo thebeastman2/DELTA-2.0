@@ -17,15 +17,21 @@
     /* DELTA gate guard (runs before the app bundle): the landing page is the
      * front door - fresh visits start there, and the workspace (/dashboard)
      * is only reachable through the login page. Only an in-tab reload of an
-     * already-active session may continue silently. */
+     * already-active session may continue silently. Redirects happen here,
+     * before the app loads, so page changes never flash the wrong screen. */
     (function () {
       try {
         var nav = (performance.getEntriesByType("navigation")[0] || {}).type || "navigate";
-        /* landing-first: a fresh arrival at the bare login page (old bookmark,
-         * address-bar autocomplete, restored tab) starts at the landing page;
-         * the hero CTA carries from=hero to reach the login directly */
+        var sameOriginRef = false;
+        try { sameOriginRef = (document.referrer || "").indexOf(location.origin) === 0; } catch (e) {}
+        /* landing-first: a cold arrival at the login page (bookmark,
+         * address-bar autocomplete, restored tab, external link) goes to the
+         * landing page. Clicking through from within the site (same-origin
+         * referrer), the from=hero CTA stamp, or the email flow (mode=)
+         * reaches the login directly. */
         if (location.pathname.indexOf("/auth") === 0) {
-          if (nav === "navigate" && location.search.indexOf("from=hero") === -1 &&
+          if (nav === "navigate" && !sameOriginRef &&
+              location.search.indexOf("from=hero") === -1 &&
               location.search.indexOf("mode=") === -1) location.replace("/");
           return;
         }
@@ -42,12 +48,14 @@
           if (/^__convexAuth(JWT|RefreshToken)_/.test(k)) localStorage.removeItem(k);
         }
         try { localStorage.removeItem("delta.guestMode"); } catch (e) {}
+        /* bounce before the app bundle loads - no flash of the workspace */
+        location.replace("/");
       } catch (e) {}
     })();
   </script>
   <script type="module" crossorigin src="./assets/index-CdKtwxjC.js"></script>
   <script defer src="./calc-details.js"></script>
-  <script type="module" src="./auth.js?v=7"></script>
+  <script type="module" src="./auth.js?v=8"></script>
   <link rel="modulepreload" crossorigin href="./assets/react-vendor-BuDGsmEW.js">
   <link rel="modulepreload" crossorigin href="./assets/framer-motion-gCUuqS5H.js">
   <link rel="modulepreload" crossorigin href="./assets/radix-ui-BKIar3ZK.js">

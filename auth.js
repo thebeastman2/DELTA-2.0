@@ -558,6 +558,30 @@ function rewriteHeroCtas() {
 }
 
 function boot() {
+  /* react to SPA navigations instantly: the 700ms poll alone lets the app's
+   * own pages flash without the gate between transitions */
+  (function () {
+    var ps = history.pushState, rs = history.replaceState;
+    var fire = function () { setTimeout(onRouteChange, 0); };
+    history.pushState = function () { var r = ps.apply(this, arguments); fire(); return r; };
+    history.replaceState = function () { var r = rs.apply(this, arguments); fire(); return r; };
+  })();
+  /* stamp hero CTAs at click time: React re-renders can reset the href, and
+   * a click before the interval stamp would land on /auth without from=hero
+   * and get bounced back to the landing page */
+  var stampCta = function (ev) {
+    var t = ev.target;
+    if (!t || !t.closest) return;
+    var a = t.closest('a[href*="/auth"]');
+    if (!a) return;
+    var h = a.getAttribute("href") || "";
+    if (h.indexOf("from=hero") === -1 && h.indexOf("mode=") === -1) {
+      a.setAttribute("href", h + (h.indexOf("?") === -1 ? "?" : "&") + "from=hero");
+    }
+  };
+  document.addEventListener("click", stampCta, true);
+  document.addEventListener("auxclick", stampCta, true);
+
   try { auth = getAuth(initializeApp(FIREBASE_CONFIG)); } catch (e) { return; }
 
   onAuthStateChanged(auth, function (user) {
@@ -592,12 +616,16 @@ function boot() {
     return;
   }
 
-  /* landing-first flow: a fresh arrival at the bare login page (bookmark,
-   * address-bar autocomplete, restored tab) starts at the landing page;
-   * the hero CTA carries from=hero and the email-link flow carries mode= -
-   * both reach the login directly. Reloading the login page stays put. */
+  /* landing-first flow: a cold arrival at the login page (bookmark,
+   * address-bar autocomplete, restored tab, external link) starts at the
+   * landing page. Clicking through from within the site (same-origin
+   * referrer), the from=hero CTA stamp, or the email flow (mode=) reaches
+   * the login directly. Reloading the login page stays put. */
+  var sameOriginRef = false;
+  try { sameOriginRef = (document.referrer || "").indexOf(location.origin) === 0; } catch (e) {}
   if (INITIAL_NAV === "navigate" && location.pathname.indexOf("/auth") === 0 &&
-      location.search.indexOf("from=hero") === -1 && location.search.indexOf("mode=") === -1) {
+      !sameOriginRef && location.search.indexOf("from=hero") === -1 &&
+      location.search.indexOf("mode=") === -1) {
     location.replace("/");
     return;
   }
