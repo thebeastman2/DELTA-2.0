@@ -28,7 +28,7 @@ var GUEST_KEY = "delta.guestMode";
 var ENTER_KEY = "delta.entered"; /* sessionStorage marker written by an explicit entry */
 var GATE_ID = "delta-gate";
 var GUEST_RE = /continue\s+as\s+guest/i;
-var DEPLOY_VERSION = 11;
+var DEPLOY_VERSION = 12;
 
 var auth = null, overlay = null, card = null;
 var state = "start", busy = false, wizardActive = false;

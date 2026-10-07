@@ -14,42 +14,23 @@
     rel="stylesheet"
   />
   <script>
-    /* DELTA gate guard (runs before the app bundle): the landing page is the
-     * front door - fresh visits start there, and the workspace (/dashboard)
-     * is only reachable through the login page. Only an in-tab reload of an
-     * already-active session may continue silently. Redirects happen here,
-     * before the app loads, so page changes never flash the wrong screen. */
+    /* DELTA gate guard (runs before the app bundle): every FRESH page load
+     * starts clean - no leftover session may be restored, or the app's own
+     * auth page auto-navigates to the workspace and the gate bounces the
+     * user back to the hero. Only an in-tab reload (and the 30s handoff
+     * window right after an explicit entry) keeps its session. Landing-first
+     * redirects happen here, before the app loads. */
     (function () {
       try {
         var nav = (performance.getEntriesByType("navigation")[0] || {}).type || "navigate";
-        /* landing-first: a cold arrival at the login page (bookmark,
-         * address-bar autocomplete, restored tab, external link) goes to the
-         * landing page. In-site clicks are stamped from=hero at click time
-         * and the email flow carries mode= - both reach the login directly.
-         * (Never trust document.referrer here: service workers and privacy
-         * settings can blank it, which bounced real clicks to the hero.) */
-        if (location.pathname.indexOf("/auth") === 0) {
-          /* kill any leftover app session BEFORE the bundle restores it -
-           * otherwise the app auto-navigates to /dashboard and bounces the
-           * user back to the landing page (fails first try, works second) */
-          var ai, ak, aks = [];
-          for (ai = 0; ai < localStorage.length; ai++) aks.push(localStorage.key(ai));
-          for (ai = 0; ai < aks.length; ai++) {
-            ak = aks[ai];
-            if (/^__convexAuth(JWT|RefreshToken)_/.test(ak)) localStorage.removeItem(ak);
-          }
-          try { localStorage.removeItem("delta.guestMode"); } catch (e) {}
-          if (nav === "navigate" &&
-              location.search.indexOf("from=hero") === -1 &&
-              location.search.indexOf("mode=") === -1) location.replace("/");
-          return;
+        var p = location.pathname;
+        if (nav === "reload") return; /* F5: the current page hands off as-is */
+        if (p.indexOf("/dashboard") === 0) {
+          try {
+            var et = parseInt(sessionStorage.getItem("delta.entered"), 10);
+            if (et > 0 && (Date.now() - et) < 30000) return; /* explicit entry just happened */
+          } catch (e) {}
         }
-        if (location.pathname.indexOf("/dashboard") !== 0) return;
-        if (nav === "reload") return;
-        try {
-          var et = parseInt(sessionStorage.getItem("delta.entered"), 10);
-          if (et > 0 && (Date.now() - et) < 30000) return; /* explicit entry just happened */
-        } catch (e) {}
         var i, k, ks = [];
         for (i = 0; i < localStorage.length; i++) ks.push(localStorage.key(i));
         for (i = 0; i < ks.length; i++) {
@@ -57,14 +38,20 @@
           if (/^__convexAuth(JWT|RefreshToken)_/.test(k)) localStorage.removeItem(k);
         }
         try { localStorage.removeItem("delta.guestMode"); } catch (e) {}
-        /* bounce before the app bundle loads - no flash of the workspace */
-        location.replace("/");
+        /* landing-first: cold login hits and direct workspace hits start at
+         * the hero; in-site clicks carry from=hero and email links mode= */
+        if (nav === "navigate") {
+          if (p.indexOf("/auth") === 0 &&
+              location.search.indexOf("from=hero") === -1 &&
+              location.search.indexOf("mode=") === -1) { location.replace("/"); return; }
+          if (p.indexOf("/dashboard") === 0) { location.replace("/"); return; }
+        }
       } catch (e) {}
     })();
   </script>
   <script type="module" crossorigin src="./assets/index-CdKtwxjC.js"></script>
   <script defer src="./calc-details.js"></script>
-  <script type="module" src="./auth.js?v=11"></script>
+  <script type="module" src="./auth.js?v=12"></script>
   <link rel="modulepreload" crossorigin href="./assets/react-vendor-BuDGsmEW.js">
   <link rel="modulepreload" crossorigin href="./assets/framer-motion-gCUuqS5H.js">
   <link rel="modulepreload" crossorigin href="./assets/radix-ui-BKIar3ZK.js">
