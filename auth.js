@@ -28,7 +28,7 @@ var GUEST_KEY = "delta.guestMode";
 var ENTER_KEY = "delta.entered"; /* sessionStorage marker written by an explicit entry */
 var GATE_ID = "delta-gate";
 var GUEST_RE = /continue\s+as\s+guest/i;
-var DEPLOY_VERSION = 10;
+var DEPLOY_VERSION = 11;
 
 var auth = null, overlay = null, card = null;
 var state = "start", busy = false, wizardActive = false;
@@ -644,13 +644,13 @@ function boot() {
 
   /* landing-first flow: a cold arrival at the login page (bookmark,
    * address-bar autocomplete, restored tab, external link) starts at the
-   * landing page. Clicking through from within the site (same-origin
-   * referrer), the from=hero CTA stamp, or the email flow (mode=) reaches
-   * the login directly. Reloading the login page stays put. */
-  var sameOriginRef = false;
-  try { sameOriginRef = (document.referrer || "").indexOf(location.origin) === 0; } catch (e) {}
+   * landing page. In-site clicks are stamped from=hero at click time and
+   * the email flow carries mode= - both reach the login directly.
+   * Never trust document.referrer: service workers and privacy settings
+   * can blank it, which bounced real clicks back to the landing page.
+   * Reloading the login page stays put. */
   if (INITIAL_NAV === "navigate" && location.pathname.indexOf("/auth") === 0 &&
-      !sameOriginRef && location.search.indexOf("from=hero") === -1 &&
+      location.search.indexOf("from=hero") === -1 &&
       location.search.indexOf("mode=") === -1) {
     location.replace("/");
     return;
