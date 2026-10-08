@@ -285,7 +285,7 @@
   tagSections();
   /* React re-renders can wipe classes; re-apply cheaply when the tree mutates */
   if ("MutationObserver" in window) {
-    var mo = new MutationObserver(function () { tagSections(); });
+    var mo = new MutationObserver(function () { tagSections(); refreshReveals(); });
     try { mo.observe(document.getElementById("root") || document.body, { childList: true, subtree: true }); } catch (e) {}
   }
 
@@ -324,17 +324,32 @@
 
   /* ------------------------------------------------------------------ *
    * 5. Card + heading reveals (reversible on scroll-up)                *
+   *    React re-renders wipe added classes, so tagSections() re-applies
+   *    them; the Set keeps revealed elements revealed across re-mounts.  *
    * ------------------------------------------------------------------ */
-  var targets = document.querySelectorAll(".reveal-left");
-  if (REDUCE || !("IntersectionObserver" in window)) {
-    for (var t = 0; t < targets.length; t++) targets[t].classList.add("is-in");
-  } else {
-    var io = new IntersectionObserver(function (entries) {
+  var revealedSet = new WeakSet();
+  var io = null;
+  if (!REDUCE && "IntersectionObserver" in window) {
+    io = new IntersectionObserver(function (entries) {
       entries.forEach(function (e) {
-        if (e.isIntersecting) e.target.classList.add("is-in");
-        else if (e.boundingClientRect.top > 0) e.target.classList.remove("is-in");
+        if (e.isIntersecting || e.boundingClientRect.top < 0) revealedSet.add(e.target);
+        else if (e.boundingClientRect.top > 0) revealedSet.delete(e.target);
+        e.target.classList.toggle("is-in", revealedSet.has(e.target));
       });
     }, { rootMargin: "0px 0px -20% 0px", threshold: 0 });
-    for (var t2 = 0; t2 < targets.length; t2++) io.observe(targets[t2]);
   }
+
+  function refreshReveals() {
+    var els = document.querySelectorAll(".reveal-left");
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      if (!revealedSet.has(el) && el.getBoundingClientRect().top < 0) revealedSet.add(el);
+      el.classList.toggle("is-in", revealedSet.has(el));
+      if (io) io.observe(el);
+    }
+  }
+  if (REDUCE || !io) {
+    document.querySelectorAll(".reveal-left").forEach(function (el) { el.classList.add("is-in"); });
+  }
+  refreshReveals();
 })();
