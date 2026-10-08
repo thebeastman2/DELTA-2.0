@@ -145,7 +145,7 @@
 
     "/* ship container: pinned, descends, one full clockwise turn */",
     ".ship{--ty0:-14vh;--ty1:6vh;position:absolute;left:65%;top:50%;",
-      "height:min(72vh,88vw);aspect-ratio:1000/1400;width:auto;",
+      "height:min(72vh,88vw);aspect-ratio:1000/1400;width:auto;overflow:visible;",
       "opacity:.8;mix-blend-mode:screen;",
       "filter:drop-shadow(0 0 6px rgba(255,255,255,.35));",
       "will-change:transform;",
