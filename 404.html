@@ -22,6 +22,14 @@
      * redirects happen here, before the app loads. */
     (function () {
       try {
+        /* /auth hosts our own gate; the app bundle ships a built-in login
+         * page there too - keep it from painting underneath the gate */
+        if (location.pathname.indexOf("/auth") === 0) {
+          var st = document.createElement("style");
+          st.id = "dg-hide-root";
+          st.textContent = "#root{display:none !important}body{background:#060b13}";
+          (document.head || document.documentElement).appendChild(st);
+        }
         var nav = (performance.getEntriesByType("navigation")[0] || {}).type || "navigate";
         var p = location.pathname;
         if (nav === "reload") return; /* F5: the current page hands off as-is */
@@ -51,7 +59,7 @@
   </script>
   <script type="module" crossorigin src="./assets/index-CdKtwxjC.js"></script>
   <script defer src="./calc-details.js"></script>
-  <script type="module" src="./auth.js?v=12"></script>
+  <script type="module" src="./auth.js?v=13"></script>
   <link rel="modulepreload" crossorigin href="./assets/react-vendor-BuDGsmEW.js">
   <link rel="modulepreload" crossorigin href="./assets/framer-motion-gCUuqS5H.js">
   <link rel="modulepreload" crossorigin href="./assets/radix-ui-BKIar3ZK.js">

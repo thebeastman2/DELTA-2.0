@@ -28,7 +28,7 @@ var GUEST_KEY = "delta.guestMode";
 var ENTER_KEY = "delta.entered"; /* sessionStorage marker written by an explicit entry */
 var GATE_ID = "delta-gate";
 var GUEST_RE = /continue\s+as\s+guest/i;
-var DEPLOY_VERSION = 12;
+var DEPLOY_VERSION = 13;
 
 var auth = null, overlay = null, card = null;
 var state = "start", busy = false, wizardActive = false;
@@ -158,6 +158,7 @@ function header(sub) {
 }
 
 function mount() {
+  keepRootHidden();
   if (document.getElementById(GATE_ID)) return;
   overlay = document.createElement("div");
   overlay.id = GATE_ID;
@@ -337,7 +338,26 @@ var SCREENS = {
   }
 };
 
+/* The app bundle renders its own built-in login page at /auth underneath our
+ * gate. The shells hide #root there at parse time (style#dg-hide-root); while
+ * the gate is up on /auth the app stays hidden, and when the gate comes down
+ * the hide is lifted so the workspace can paint. */
+function keepRootHidden() {
+  try {
+    var onAuth = location.pathname.indexOf("/auth") === 0 && overlay;
+    var h = document.getElementById("dg-hide-root");
+    if (onAuth && !h) {
+      h = document.createElement("style");
+      h.id = "dg-hide-root";
+      h.textContent = "#root{display:none !important}body{background:#060b13}";
+      (document.head || document.documentElement).appendChild(h);
+    }
+    if (!onAuth && h && h.parentNode) h.parentNode.removeChild(h);
+  } catch (e) {}
+}
+
 function paint() {
+  keepRootHidden();
   if (!card) return;
   var fn = SCREENS[state] || SCREENS.start;
   card.innerHTML = fn();
@@ -434,6 +454,7 @@ function onRouteChange() {
   var onAuth = location.pathname.indexOf("/auth") === 0;
   if (!onAuth && overlay) {
     overlay.remove(); overlay = null; card = null;
+    keepRootHidden();
     if (state === "entering" || state === "ready" || state === "readyNew") state = "start";
   }
   /* SPA navigation into /auth (e.g. clicking Launch workspace on the landing
