@@ -180,7 +180,7 @@
       "transform:translate(-50%,-50%) translateY(calc((1 - var(--ease,0)) * 5vh));}",
 
     "/* each piece computes its own 0-1 progress from --build and its window */",
-    ".diagram :is(.face,.draw,.grid,.hair,.conn,.ring,.icon,.spark,.bar,.link,.cube){",
+    ".diagram :is(.face,.draw,.grid,.hair,.conn,.ring,.icon,.spark,.bar,.link,.cube,.fcard,.node){",
       "--k:clamp(0,(var(--build,.04) - var(--s,0)) / max(.001,(var(--e,1) - var(--s,0))),1);}",
     ".diagram :is(.face,.draw,.grid,.hair,.conn,.ring,.icon,.spark,.bar,.link,.cube){fill:none;stroke:#fff;",
       "stroke-linejoin:round;stroke-linecap:round;stroke-dasharray:1;stroke-dashoffset:calc(1 - var(--k,0));}",
