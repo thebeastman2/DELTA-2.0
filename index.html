@@ -64,14 +64,46 @@
     })();
   </script>
   <script type="module" crossorigin src="./assets/index-CdKtwxjC.js"></script>
-  <script defer src="./calc-details.js"></script>
+  <script defer src="./calc-details.js?v=2"></script>
   <script type="module" src="./auth.js?v=13"></script>
-  <script type="module" src="./diagram.js?v=3"></script>
+  <script defer src="./assets/vendor/gsap-3.13.0.min.js"></script>
+  <script defer src="./assets/vendor/ScrollTrigger-3.13.0.min.js"></script>
+  <script defer src="./architecture.js?v=3"></script>
   <link rel="modulepreload" crossorigin href="./assets/react-vendor-BuDGsmEW.js">
   <link rel="modulepreload" crossorigin href="./assets/framer-motion-gCUuqS5H.js">
   <link rel="modulepreload" crossorigin href="./assets/radix-ui-BKIar3ZK.js">
   <link rel="modulepreload" crossorigin href="./assets/charts-DKUPXMp8.js">
   <link rel="stylesheet" crossorigin href="./assets/index-CIBBl9-n.css">
+  <style id="delta-loader-style">
+    /* Pentafoil spinner used while an optimization is running. It draws in the
+       button's own text colour (currentColor) and keeps the bundle's 40x40
+       geometry, so it scales cleanly at every button size. */
+    .delta-loader {
+      flex: none;
+      overflow: visible;
+      transform-origin: center;
+      color: currentColor;
+    }
+    .delta-loader .delta-loader-track {
+      stroke: currentColor;
+      opacity: .2;
+    }
+    .delta-loader .delta-loader-car {
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-dasharray: 15 85;
+      stroke-dashoffset: 0;
+      animation: delta-loader-travel 1.4s linear infinite;
+      will-change: stroke-dasharray, stroke-dashoffset;
+    }
+    @keyframes delta-loader-travel {
+      from { stroke-dashoffset: 0; }
+      to { stroke-dashoffset: -100; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .delta-loader .delta-loader-car { animation-duration: 3.5s; }
+    }
+  </style>
 </head>
 
 
