@@ -28,6 +28,20 @@
      * redirects happen here, before the app loads. */
     (function () {
       try {
+        /* This tree is published twice: canonically at the account root, and
+         * by this repo's own Pages build under /DELTA-2.0/. Every route below
+         * is root-absolute and og:url names the root, so under the project
+         * path the app would paint its own 404 view - hand the prefix over to
+         * the canonical root instead, keeping the rest of the path. Inert at
+         * the root, so both published copies share this file unchanged. */
+        var pf = "/DELTA-2.0";
+        if (location.pathname.indexOf(pf) === 0 &&
+            (location.pathname.length === pf.length ||
+             location.pathname.charAt(pf.length) === "/")) {
+          location.replace(location.origin + (location.pathname.slice(pf.length) || "/") +
+                           location.search + location.hash);
+          return;
+        }
         /* /auth hosts our own gate; the app bundle ships a built-in login
          * page there too - keep it from painting underneath the gate */
         if (location.pathname.indexOf("/auth") === 0) {
